@@ -26,6 +26,7 @@ typedef enum opcode_e {
   OP_CALL  = FAM_CALL | 0x01, // near call next two bytes as offset
   OP_LCALL = FAM_CALL | 0x02, // far call next 3 bytes as offset
   OP_BCALL = FAM_CALL | 0x03, // call a builtin by using the next byte as an ID
+  OP_YIELD = FAM_CALL | 0x0E, // suspend execution
   OP_HALT  = FAM_CALL | 0x0F, // end execution
 
   OP_PUSH_I0  = FAM_PUSH | 0x00, // push 0
@@ -106,9 +107,9 @@ typedef enum opcode_e {
   OP_NOT       = FAM_BITS | 0x07, // negate the boolean value on the top of the stack
 #if EVM_FLOAT_SUPPORT == 1
   OP_CONV_FI   = FAM_BITS | 0x08, // convert top of the stack from float to integer
-  OP_CONV_FI_0 = FAM_BITS | 0x09, // convert the second value from float to integer
+  OP_CONV_FI_1 = FAM_BITS | 0x09, // convert the second value from float to integer
   OP_CONV_IF   = FAM_BITS | 0x0A, // convert top of the stack from integer to float
-  OP_CONV_IF_0 = FAM_BITS | 0x0B, // convert the second value from integer to float
+  OP_CONV_IF_1 = FAM_BITS | 0x0B, // convert the second value from integer to float
 #endif
 
   OP_CMP_I0  = FAM_CMP | 0x00, // compare top of stack to 0 as an integer

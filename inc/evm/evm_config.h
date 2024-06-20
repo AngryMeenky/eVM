@@ -4,23 +4,43 @@
 
 // config values
 // The maximum number of different builtin functions that can be called by the byte code
-// valid values: [4,256]
-#define EVM_MAX_BUILTINS (32)
+// valid values: [1,256]
+#ifndef EVM_MAX_BUILTINS
+#  define EVM_MAX_BUILTINS (8)
+#endif
 
 // Does the target platfrom allow unaligned reads?
 // valid values: [0,1]
-#define EVM_UNALIGNED_READS (0)
+#ifndef EVM_UNALIGNED_READS
+#  define EVM_UNALIGNED_READS (0)
+#endif
 
 // Support floating point math?
 // valid values: [0,1]
-#define EVM_FLOAT_SUPPORT (1)
+#ifndef EVM_FLOAT_SUPPORT
+#  define EVM_FLOAT_SUPPORT (1)
+#endif
 
-// what level of logging to support?
+// Require statically allocated stack?
+// valid values: [0,1]
+#ifndef EVM_STATIC_STACK
+#  define EVM_STATIC_STACK (0)
+#endif
+
+// Require statically allocated program?
+// valid values: [0,1]
+#ifndef EVM_STATIC_PROGRAM
+#  define EVM_STATIC_PROGRAM (0)
+#endif
+
+// What level of logging to support?
 // valid values: [0,6]
-#define EVM_LOG_LEVEL (4)
+#ifndef EVM_LOG_LEVEL
+#  define EVM_LOG_LEVEL (4)
+#endif
 
 
-// logging support
+// logging macros
 #define EVM_TRACE(STR) EVM_TRACEF("%s", STR)
 #define EVM_DEBUG(STR) EVM_DEBUGF("%s", STR)
 #define EVM_INFO(STR)  EVM_INFOF("%s", STR)
@@ -72,7 +92,7 @@
 // config validation
 #if !defined(EVM_MAX_BUILTINS)
 #  error "EVM_MAX_BUILTINS is undefined"
-#elif EVM_MAX_BUILTINS < 0 || EVM_MAX_BUILTINS > 256
+#elif EVM_MAX_BUILTINS < 1 || EVM_MAX_BUILTINS > 256
 #  error "EVM_MAX_BUILTINS is out of range"
 #endif
 
@@ -86,6 +106,18 @@
 #  error "EVM_FLOAT_SUPPORT is undefined"
 #elif EVM_FLOAT_SUPPORT < 0 || EVM_FLOAT_SUPPORT > 1
 #  error "EVM_FLOAT_SUPPORT is out of range"
+#endif
+
+#if !defined(EVM_STATIC_STACK)
+#  error "EVM_STATIC_STACK is undefined"
+#elif EVM_STATIC_STACK < 0 || EVM_STATIC_STACK > 1
+#  error "EVM_STATIC_STACK is out of range"
+#endif
+
+#if !defined(EVM_STATIC_PROGRAM)
+#  error "EVM_STATIC_PROGRAM is undefined"
+#elif EVM_STATIC_PROGRAM < 0 || EVM_STATIC_PROGRAM > 1
+#  error "EVM_STATIC_PROGRAM is out of range"
 #endif
 
 #if !defined(EVM_LOG_LEVEL)

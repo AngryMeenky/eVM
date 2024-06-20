@@ -6,7 +6,8 @@
 
 
 static int slurp(FILE *fp, uint8_t **buf, uint32_t *len, const char *exe, const char *name);
-
+static int32_t programChecksum(evm_t *vm);
+static int32_t stackDump(evm_t *vm);
 
 int main(int argc, char **argv) {
   int result = EXIT_SUCCESS;
@@ -64,14 +65,14 @@ int main(int argc, char **argv) {
 
 // builtin bindings
 const EvmBuiltinFunction EVM_BUILTINS[EVM_MAX_BUILTINS] = {
+  &programChecksum,
+  &stackDump,
   &evmUnboundHandler,
   &evmUnboundHandler,
   &evmUnboundHandler,
   &evmUnboundHandler,
   &evmUnboundHandler,
   &evmUnboundHandler,
-  &evmUnboundHandler,
-  &evmUnboundHandler
 };
 
 
@@ -100,5 +101,28 @@ static int slurp(FILE *fp, uint8_t **buffer, uint32_t *length, const char *exe, 
   }
 
   return !*length;
+}
+
+
+static int32_t programChecksum(evm_t *vm) {
+  int32_t sum = 0;
+  uint32_t ip;
+
+  for(ip = 0U; ip < vm->maxProgram; ++ip) {
+    sum = ((sum << 1) + vm->program[ip]) ^ ((sum >> 31) & 1);
+  }
+
+  return sum;
+}
+
+
+static int32_t stackDump(evm_t *vm) {
+  uint32_t sp;
+  printf("Stack: %u\n", vm->sp);
+  for(sp = vm->sp; sp-- > 0;) {
+    printf("  %08X\n", vm->stack[sp]);
+  }
+
+  return 0;
 }
 

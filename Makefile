@@ -14,7 +14,7 @@ EXAMPLE_OBJS := obj/evm.o obj/example.o
 EXAMPLE_LIBS :=
 
 ASM_BIN  := bin/evm-asm
-ASM_OBJS := obj/evm.o obj/asm.o
+ASM_OBJS := obj/evm_asm.o obj/asm.o
 ASM_LIBS :=
 
 

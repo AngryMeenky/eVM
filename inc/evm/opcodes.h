@@ -39,7 +39,7 @@ typedef enum opcode_e {
 #if EVM_FLOAT_SUPPORT == 1
   OP_PUSH_F0  = FAM_PUSH | 0x07, // push 0.0
   OP_PUSH_F1  = FAM_PUSH | 0x08, // push 1.0
-  OP_PUSH_FN1 = FAM_PUSH | 0x09, // push 1.0
+  OP_PUSH_FN1 = FAM_PUSH | 0x09, // push -1.0
   OP_PUSH_F   = FAM_PUSH | 0x0A, // push the next 4 bytes as a little endian float
 #endif
   OP_SWAP     = FAM_PUSH | 0x0F, // swap the top two values on the stack

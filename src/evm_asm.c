@@ -2,6 +2,7 @@
 #include "evm/opcodes.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 
 typedef struct evm_label_s {
@@ -20,6 +21,8 @@ typedef struct evm_section_s {
   evm_label_t           labels;
   uint32_t              base;
   uint32_t              length;
+  uint32_t              capacity;
+  char                  name[];
 } evm_section_t;
 
 
@@ -31,9 +34,15 @@ struct evm_program_s {
 };
 
 
-static void evmasmClearLabelList(evm_label_t *);
-static void evmasmClearSectionList(evm_section_t *);
-static void evmasmClearInstructionList(evm_instruction_t *);
+static void               evmasmClearLabelList(evm_label_t *);
+static void               evmasmClearSectionList(evm_section_t *);
+static void               evmasmClearInstructionList(evm_instruction_t *);
+static evm_instruction_t *evmasmNewInstruction(const char *, uint32_t);
+static evm_program_t     *evmasmNewProgram();
+static void               evmasmDeleteProgram(evm_program_t *);
+static evm_section_t     *evmasmNewSection(const char *);
+static void               evmasmDeleteSection(evm_section_t *);
+static evm_label_t       *evmasmNewLabel(const char *, uint32_t);
 
 
 evm_assembler_t *evmasmAllocate() {
@@ -97,7 +106,8 @@ int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
 int evmasmValidateProgram(evm_assembler_t *evm) {
   // TODO: ensure no duplicate labels
   // TODO: ensure all jmp targets are resolved
-  // TODO: ensure that now sections overlap
+  // TODO: ensure that no sections overlap
+  // TODO: ensure that all sections contain data or instructions
   // TODO: ensure first byte is a valid instruction and not data
   return -1;
 }
@@ -116,8 +126,16 @@ uint32_t evmasmProgramToBuffer(const evm_assembler_t *evm, uint8_t *buf, uint32_
   if(evm && buf) {
     if(evm->output || !evmasmValidateProgram((evm_assembler_t *) evm)) {
       if(evm->length <= max) {
+        evm_program_t *prog = evm->output;
+        evm_section_t *s;
+
+        // zero the buffer, empty space between sections will remain zeroed
         memset(buf, 0, evm->length);
-        // TODO: convert program to flat buffer
+        // convert section list to flat buffer
+        for(s = prog->sections.next; s != &prog->sections; s = s->next) {
+          memcpy(&buf[s->base], s->contents, s->length);
+        }
+
         return evm->length;
       }
     }
@@ -175,7 +193,7 @@ static void evmasmClearSectionList(evm_section_t *list) {
 
   for(node = list->next; node != list; node = tmp) {
     tmp = node->next;
-    free(node);
+    evmasmDeleteSection(node);
   }
 
   list->prev = list;
@@ -193,5 +211,76 @@ static void evmasmClearLabelList(evm_label_t *list) {
 
   list->prev = list;
   list->next = list;
+}
+
+
+static evm_instruction_t *evmasmNewInstruction(const char *text, uint32_t line) {
+  evm_instruction_t *inst = calloc(1, sizeof(evm_instruction_t) + strlen(text) + 1U);
+  if(inst) {
+    inst->line = line;
+    strcpy(&inst->text[0], text);
+  }
+
+  return inst;
+}
+
+
+static evm_program_t *evmasmNewProgram() {
+  evm_program_t *prog = calloc(1, sizeof(evm_program_t));
+
+  if(prog) {
+    prog->sections.prev = &prog->sections;
+    prog->sections.next = &prog->sections;
+  }
+
+  return prog;
+}
+
+
+static void evmasmDeleteProgram(evm_program_t *prog) {
+  if(prog) {
+    evmasmClearSectionList(&prog->sections);
+    free(prog);
+  }
+}
+
+
+static evm_section_t *evmasmNewSection(const char *name) {
+  evm_section_t *section = calloc(1, sizeof(evm_section_t) + strlen(name) + 1U);
+
+  if(section) {
+    section->labels.prev = &section->labels;
+    section->labels.next = &section->labels;
+    if((section->contents = (uint8_t *) calloc(1, 512U))) {
+      section->capacity = 512U;
+    }
+    strcpy(&section->name[0], name);
+  }
+
+  return section;
+}
+
+
+static void evmasmDeleteSection(evm_section_t *section) {
+  if(section) {
+    evmasmClearLabelList(&section->labels);
+    if(section->contents) {
+      free(section->contents);
+    }
+    free(section);
+  }
+}
+
+
+static evm_label_t *evmasmNewLabel(const char *name, uint32_t id) {
+  evm_label_t *label = calloc(1, sizeof(evm_label_t) + strlen(name) + 1U);
+
+  if(label) {
+    label->offset = 0xFF000000U; // maximum section size is 24bits
+    label->id = id;
+    strcpy(&label->name[0], name);
+  }
+
+  return label;
 }
 

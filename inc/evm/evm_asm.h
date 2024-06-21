@@ -10,7 +10,7 @@
 typedef struct evm_instruction_s {
   struct evm_instruction_s *prev;
   struct evm_instruction_s *next;
-  uint32_t                  offset;
+  uint32_t                  line;
   uint8_t                   binary[6];
   int8_t                    count;
   int8_t                    flags;

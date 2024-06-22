@@ -176,7 +176,9 @@ static const evm_directive_t DIRECTIVES[] = {
   { ".db",     &evmDataDirective,    ARG_I8,   DIR_DATA },
   { ".dh",     &evmDataDirective,    ARG_I16,  DIR_DATA },
   { ".dw",     &evmDataDirective,    ARG_I32,  DIR_DATA },
+#if EVM_FLOAT_SUPPORT == 1
   { ".df",     &evmDataDirective,    ARG_F32,  DIR_DATA },
+#endif
   { NULL,      NULL,                 ARG_NONE, 0        },
 };
 
@@ -612,6 +614,7 @@ static int evmDataDirective(const evm_directive_t *d, evm_instruction_t *i) {
       EVM_ERRORF("Missing operand for %s", &d->tag[0]);
     }
   }
+#if EVM_FLOAT_SUPPORT == 1
   else if(d->arg == ARG_F32) {
     float operand;
 
@@ -628,6 +631,10 @@ static int evmDataDirective(const evm_directive_t *d, evm_instruction_t *i) {
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &d->tag[0]);
     }
+  }
+#endif
+  else {
+    EVM_FATALF("Unsupported operand type while processing %s", &d->tag[0]);
   }
 
   return result;
@@ -796,8 +803,8 @@ static int evmPushSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
-#endif
   }
+#endif
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
@@ -933,18 +940,18 @@ static int evmOptionalSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) 
 
     if(m->arg != ARG_I4_O4 || count >= 1) { // ensure the required args are given
       // validate the operand values
+      if(m->arg == ARG_O3 && count >= 1 && (first < 1 || 8 < first)) {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 8)", &m->tag[0], first);
+      }
 #if EVM_FLOAT_SUPPORT == 1
-      if(m->arg == ARG_O1 && count >= 1 && (first < 0 || 1 < first)) {
+      else if(m->arg == ARG_O1 && count >= 1 && (first < 0 || 1 < first)) {
         result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 1)", &m->tag[0], first);
       }
 #endif
-      else if(m->arg == ARG_O3 && count >= 1 && (first < 1 || 8 < first)) {
-        result = -1;
-        i->flags |= INST_INVALID_ARG;
-        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 8)", &m->tag[0], first);
-      }
       else if(m->arg == ARG_O4 && count >= 1 && (first < 0 || 15 < first)) {
         result = -1;
         i->flags |= INST_INVALID_ARG;

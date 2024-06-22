@@ -530,6 +530,7 @@ static void evmPushSerializer(const struct evm_mnemonic_s *m, evm_instruction_t 
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
   }
+#if EVM_FLOAT_SUPPORT == 1
   else if(m->arg == ARG_F32) {
     float operand;
 
@@ -559,6 +560,7 @@ static void evmPushSerializer(const struct evm_mnemonic_s *m, evm_instruction_t 
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
+#endif
   }
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
@@ -578,7 +580,7 @@ static void evmLabelSerializer(const struct evm_mnemonic_s *m, evm_instruction_t
     while(*ptr && isspace(*ptr)) { ++ptr; }
 
     if(*ptr) {
-      i->binary[i->count] = (int8_t) (ptr - &i->text[0]);
+      i->binary[1] = (int8_t) (ptr - &i->text[0]);
       i->flags |= INST_UNRESOLVED;
     }
     else {
@@ -610,7 +612,7 @@ static void evmSimpleSerializer(const struct evm_mnemonic_s *m, evm_instruction_
       }
       else {
         i->flags |= INST_INVALID_ARG;
-        EVM_ERRORF( "Operand out of bounds for %s (-128 <= %d <= 127)", &m->tag[0], operand);
+        EVM_ERRORF("Operand out of bounds for %s (-128 <= %d <= 127)", &m->tag[0], operand);
       }
     }
     else {
@@ -667,5 +669,94 @@ static void evmCompareSerializer(const struct evm_mnemonic_s *m, evm_instruction
 
 
 static void evmOptionalSerializer(const struct evm_mnemonic_s *m, evm_instruction_t *i) {
+  i->binary[0] = m->op;
+  i->count = 1;
+
+  if(ARG_O1 <= m->arg && m->arg <= ARG_O8) {
+    int32_t first = 0, second = 1;
+    int count = sscanf(&i->text[0], "%*s %d %d", &first, &second);
+
+    if(m->arg != ARG_I4_O4 || count >= 1) { // ensure the required args are given
+      // validate the operand values
+#if EVM_FLOAT_SUPPORT == 1
+      if(m->arg == ARG_O1 && count >= 1 && (first < 0 || 1 < first)) {
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 1)", &m->tag[0], first);
+      }
+#endif
+      else if(m->arg == ARG_O3 && count >= 1 && (first < 1 || 8 < first)) {
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 8)", &m->tag[0], first);
+      }
+      else if(m->arg == ARG_O4 && count >= 1 && (first < 0 || 15 < first)) {
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 15)", &m->tag[0], first);
+      }
+      else if(m->arg == ARG_I4_O4 && (first < 1 || 16 < first)) {
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 16)", &m->tag[0], first);
+      }
+      else if(m->arg == ARG_I4_O4 && count == 2 && (second < 1 || 16 < second)) {
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 16)", &m->tag[0], second);
+      }
+      else if(m->arg == ARG_O8 && count >= 1 && (first < 0 || 255 < first)) {
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 255)", &m->tag[0], first);
+      }
+      // modify the opcode based on the operand
+      else if(m->op == OP_POP_1) {
+        i->binary[0] = m->op + (uint8_t) (first - 1);
+        i->flags |= INST_FINALIZED;
+      }
+      else if(m->op == OP_REM_1) {
+        if(second == 1 && first < 8) {
+          i->binary[0] = m->op + (uint8_t) (first - 1);
+          i->flags |= INST_FINALIZED;
+        }
+        else {
+          i->binary[0] = OP_REM_R;
+          i->binary[1] = (uint8_t) (((first - 1) << 4) | (second - 1));
+          i->count++;
+          i->flags |= INST_FINALIZED;
+        }
+      }
+      else if(m->op == OP_DUP_1) {
+        i->binary[0] = m->op + (uint8_t) first;
+        i->flags |= INST_FINALIZED;
+      }
+      else if(m->op == OP_RET) {
+        if(first < 15) {
+          i->binary[0] = m->op + (uint8_t) first;
+        }
+        else {
+          i->binary[0] = OP_RET_I;
+          i->binary[1] = (uint8_t) first;
+          i->count++;
+        }
+        i->flags |= INST_FINALIZED;
+      }
+#if EVM_FLOAT_SUPPORT == 1
+      else if(m->op == OP_CONV_FI) {
+        i->binary[0] = m->op + (uint8_t) first;
+        i->flags |= INST_FINALIZED;
+      }
+      else if(m->op == OP_CONV_IF) {
+        i->binary[0] = m->op + (uint8_t) first;
+        i->flags |= INST_FINALIZED;
+      }
+#endif
+      else {
+        EVM_FATALF("Unhandled mnemonic encountered during optional operand processing: %s", &m->tag[0]);
+      }
+    }
+    else {
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &m->tag[0]);
+    }
+  }
+  else {
+    EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
+  }
 }
 

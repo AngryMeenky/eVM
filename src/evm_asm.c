@@ -26,6 +26,8 @@ typedef enum evm_arg_e {
 
 
 typedef enum evm_flags_e {
+  INST_DIRECTIVE   = 1 << 2,
+  INST_LABEL       = 1 << 3,
   INST_FINALIZED   = 1 << 4,
   INST_UNRESOLVED  = 1 << 5,
   INST_INVALID_ARG = 1 << 6,
@@ -33,11 +35,33 @@ typedef enum evm_flags_e {
 } evm_flags_t;
 
 
+typedef enum evm_dir_e {
+  DIR_BASE,
+  DIR_NAME,
+  DIR_DATA,
+} evm_dir_t;
+
+
+struct evm_directive_s;
+typedef struct evm_directive_s evm_directive_t;
+
+
+typedef int (*evm_handler_t)(const struct evm_directive_s *, evm_instruction_t *);
+
+
+struct evm_directive_s {
+  const char    *tag;
+  evm_handler_t  process;
+  evm_arg_t      arg;
+  evm_dir_t      kind;
+};
+
+
 struct evm_mnemonic_s;
 typedef struct evm_mnemonic_s evm_mnemonic_t;
 
 
-typedef void (*evm_serializer_t)(const struct evm_mnemonic_s *, evm_instruction_t *);
+typedef int (*evm_serializer_t)(const struct evm_mnemonic_s *, evm_instruction_t *);
 
 
 struct evm_mnemonic_s {
@@ -140,11 +164,28 @@ int evmasmParseFile(evm_assembler_t *evm, FILE *fp) {
 }
 
 
-static void evmPushSerializer(const struct evm_mnemonic_s *, evm_instruction_t *);
-static void evmLabelSerializer(const struct evm_mnemonic_s *, evm_instruction_t *);
-static void evmSimpleSerializer(const struct evm_mnemonic_s *, evm_instruction_t *);
-static void evmCompareSerializer(const struct evm_mnemonic_s *, evm_instruction_t *);
-static void evmOptionalSerializer(const struct evm_mnemonic_s *, evm_instruction_t *);
+static int evmDataDirective(const evm_directive_t *, evm_instruction_t *);
+static int evmTextDirective(const evm_directive_t *, evm_instruction_t *);
+static int evmAddressDirective(const evm_directive_t *, evm_instruction_t *);
+
+
+// List of directives and associated arguments
+static const evm_directive_t DIRECTIVES[] = {
+  { ".name",   &evmTextDirective,    ARG_LBL,  DIR_NAME },
+  { ".offset", &evmAddressDirective, ARG_I24,  DIR_BASE },
+  { ".db",     &evmDataDirective,    ARG_I8,   DIR_DATA },
+  { ".dh",     &evmDataDirective,    ARG_I16,  DIR_DATA },
+  { ".dw",     &evmDataDirective,    ARG_I32,  DIR_DATA },
+  { ".df",     &evmDataDirective,    ARG_F32,  DIR_DATA },
+  { NULL,      NULL,                 ARG_NONE, 0        },
+};
+
+
+static int evmPushSerializer(const evm_mnemonic_t *, evm_instruction_t *);
+static int evmLabelSerializer(const evm_mnemonic_t *, evm_instruction_t *);
+static int evmSimpleSerializer(const evm_mnemonic_t *, evm_instruction_t *);
+static int evmCompareSerializer(const evm_mnemonic_t *, evm_instruction_t *);
+static int evmOptionalSerializer(const evm_mnemonic_t *, evm_instruction_t *);
 
 
 // List of mnemonics, associated arguments, and covered opcodes
@@ -228,23 +269,49 @@ int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
   // empty string check
   if(start != end) {
     if(*start == '.') {
-      // process directives
-      
+      const evm_directive_t *directive;
+      int handled = 0;
+
+      // parse directives
+      for(directive = &DIRECTIVES[0]; directive->tag; ++directive) {
+        if(!mnemonicCompare(&directive->tag[0], start, end)) {
+          evm_instruction_t *inst = evmasmNewInstruction(start, end, num);
+          evmasmAppendInstruction(&evm->head, inst);
+          result |= directive->process(directive, inst);
+          handled = -1;
+          break;
+        }
+      }
+
+      if(!handled) {
+        EVM_ERRORF("Unknown directive on line %d: %s", num, line);
+        result = -1;
+      }
     }
     else if(end[-1] == ':') {
       // process labels
+      evm_instruction_t *inst = evmasmNewInstruction(start, end - 1, num);
+      evmasmAppendInstruction(&evm->head, inst);
+      inst->flags |= INST_LABEL;
     }
     else {
       const evm_mnemonic_t *mnemonic;
+      int handled = 0;
 
       // parse instructions
       for(mnemonic = &MNEMONICS[0]; mnemonic->tag; ++mnemonic) {
         if(!mnemonicCompare(&mnemonic->tag[0], start, end)) {
           evm_instruction_t *inst = evmasmNewInstruction(start, end, num);
           evmasmAppendInstruction(&evm->head, inst);
-          mnemonic->process(mnemonic, inst);
+          result |= mnemonic->process(mnemonic, inst);
+          handled = -1;
           break;
         }
+      }
+
+      if(!handled) {
+        EVM_ERRORF("Unexpected input on line %d: %s", num, line);
+        result = -1;
       }
     }
   }
@@ -472,7 +539,174 @@ static int mnemonicCompare(const char *tag, const char *start, const char *end) 
 }
 
 
-static void evmPushSerializer(const struct evm_mnemonic_s *m, evm_instruction_t *i) {
+static int evmDataDirective(const evm_directive_t *d, evm_instruction_t *i) {
+  int result = 0;
+
+  i->binary[0] = d->kind;
+  i->flags |= INST_DIRECTIVE;
+  i->count = 1;
+
+  if(d->arg == ARG_I8) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
+      if(-128 <= operand && operand <= 255) {
+        i->binary[1] = (uint8_t) (operand & 0xFF);
+        i->count += 1;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (-128 <= %d <= 255)", &d->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+  else if(d->arg == ARG_I16) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
+      if(-32768 <= operand && operand <= 65535) {
+        i->binary[1] = (uint8_t) ( operand       & 0xFF);
+        i->binary[2] = (uint8_t) ((operand >> 8) & 0xFF);
+        i->count += 2;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (-32768 <= %d <= 65535)", &d->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+  else if(d->arg == ARG_I32) {
+    int64_t operand;
+
+    if(sscanf(&i->text[0], "%*s %ld", &operand) == 1) {
+      if(-2147483648 <= operand && operand <= 4294967295) {
+        i->binary[1] = (uint8_t) ( operand        & 0xFF);
+        i->binary[2] = (uint8_t) ((operand >>  8) & 0xFF);
+        i->binary[3] = (uint8_t) ((operand >> 16) & 0xFF);
+        i->binary[4] = (uint8_t) ((operand >> 24) & 0xFF);
+        i->count += 4;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF(
+          "Operand out of bounds for %s (-2147483648 <= %ld <= 4294967295)", &d->tag[0], operand
+        );
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+  else if(d->arg == ARG_F32) {
+    float operand;
+
+    if(sscanf(&i->text[0], "%*s %f", &operand) == 1) {
+      uint32_t bits = *(uint32_t *) &operand;
+      i->binary[1] = (uint8_t) ( bits        & 0xFF);
+      i->binary[2] = (uint8_t) ((bits >>  8) & 0xFF);
+      i->binary[3] = (uint8_t) ((bits >> 16) & 0xFF);
+      i->binary[4] = (uint8_t) ((bits >> 24) & 0xFF);
+      i->count += 4;
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+
+  return result;
+}
+
+
+static int evmTextDirective(const evm_directive_t *d, evm_instruction_t *i) {
+  int result = 0;
+
+  i->binary[0] = d->kind;
+  i->flags |= INST_DIRECTIVE;
+  i->count = 1;
+
+  if(d->arg == ARG_LBL) {
+    const char *ptr = &i->text[0];
+    // skip the mnemonic
+    while(*ptr && !isspace(*ptr)) { ++ptr; }
+    // skip the whitespace
+    while(*ptr && isspace(*ptr)) { ++ptr; }
+
+    if(*ptr) {
+      i->binary[1] = (int8_t) (ptr - &i->text[0]);
+      i->flags |= INST_FINALIZED | INST_LABEL;
+      i->count++;
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG | INST_LABEL;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+  else {
+    EVM_FATALF("Unsupported operand type while processing %s", &d->tag[0]);
+  }
+
+  return result;
+}
+
+
+static int evmAddressDirective(const evm_directive_t *d, evm_instruction_t *i) {
+  int result = 0;
+
+  i->binary[0] = d->kind;
+  i->flags |= INST_DIRECTIVE;
+  i->count = 1;
+
+  if(d->arg == ARG_I24) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
+      if(0 <= operand && operand <= 16777215) {
+        i->binary[1] = (uint8_t) ( operand        & 0xFF);
+        i->binary[2] = (uint8_t) ((operand >>  8) & 0xFF);
+        i->binary[3] = (uint8_t) ((operand >> 16) & 0xFF);
+        i->count += 3;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 16777215)", &d->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+  else {
+    EVM_FATALF("Unsupported operand type while processing %s", &d->tag[0]);
+  }
+
+  return result;
+}
+
+
+static int evmPushSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
+  int result = 0;
+
   i->binary[0] = m->op;
   i->count = 1;
 
@@ -526,6 +760,7 @@ static void evmPushSerializer(const struct evm_mnemonic_s *m, evm_instruction_t 
       i->flags |= INST_FINALIZED;
     }
     else {
+      result = -1;
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
@@ -557,6 +792,7 @@ static void evmPushSerializer(const struct evm_mnemonic_s *m, evm_instruction_t 
       i->flags |= INST_FINALIZED;
     }
     else {
+      result = -1;
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
@@ -565,10 +801,14 @@ static void evmPushSerializer(const struct evm_mnemonic_s *m, evm_instruction_t 
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
+
+  return result;
 }
 
 
-static void evmLabelSerializer(const struct evm_mnemonic_s *m, evm_instruction_t *i) {
+static int evmLabelSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
+  int result = 0;
+
   i->binary[0] = m->op;
   i->count = 1;
 
@@ -584,6 +824,7 @@ static void evmLabelSerializer(const struct evm_mnemonic_s *m, evm_instruction_t
       i->flags |= INST_UNRESOLVED;
     }
     else {
+      result = -1;
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
@@ -591,10 +832,14 @@ static void evmLabelSerializer(const struct evm_mnemonic_s *m, evm_instruction_t
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
+
+  return result;
 }
 
 
-static void evmSimpleSerializer(const struct evm_mnemonic_s *m, evm_instruction_t *i) {
+static int evmSimpleSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
+  int result = 0;
+
   i->binary[0] = m->op;
   i->count = 1;
 
@@ -611,11 +856,13 @@ static void evmSimpleSerializer(const struct evm_mnemonic_s *m, evm_instruction_
         i->count++;
       }
       else {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (-128 <= %d <= 127)", &m->tag[0], operand);
       }
     }
     else {
+      result = -1;
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
@@ -623,10 +870,14 @@ static void evmSimpleSerializer(const struct evm_mnemonic_s *m, evm_instruction_
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
+
+  return result;
 }
 
 
-static void evmCompareSerializer(const struct evm_mnemonic_s *m, evm_instruction_t *i) {
+static int evmCompareSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
+  int result = 0;
+
   i->binary[0] = m->op;
   i->count = 1;
 
@@ -647,28 +898,32 @@ static void evmCompareSerializer(const struct evm_mnemonic_s *m, evm_instruction
           case 1:
             i->binary[0] = m->op + 1;
           break;
-
         }
 
         i->flags |= INST_FINALIZED;
       }
       else {
-        i->binary[0] = m->op + 3;
-        i->flags |= INST_FINALIZED;
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (-1 <= %d <= 1)", &m->tag[0], operand);
       }
     }
     else {
-      i->flags |= INST_MISSING_ARG;
-      EVM_ERRORF("Missing operand for %s", &m->tag[0]);
+      i->binary[0] = m->op + 3;
+      i->flags |= INST_FINALIZED;
     }
   }
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
+
+  return result;
 }
 
 
-static void evmOptionalSerializer(const struct evm_mnemonic_s *m, evm_instruction_t *i) {
+static int evmOptionalSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
+  int result = 0;
+
   i->binary[0] = m->op;
   i->count = 1;
 
@@ -680,27 +935,33 @@ static void evmOptionalSerializer(const struct evm_mnemonic_s *m, evm_instructio
       // validate the operand values
 #if EVM_FLOAT_SUPPORT == 1
       if(m->arg == ARG_O1 && count >= 1 && (first < 0 || 1 < first)) {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 1)", &m->tag[0], first);
       }
 #endif
       else if(m->arg == ARG_O3 && count >= 1 && (first < 1 || 8 < first)) {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 8)", &m->tag[0], first);
       }
       else if(m->arg == ARG_O4 && count >= 1 && (first < 0 || 15 < first)) {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 15)", &m->tag[0], first);
       }
       else if(m->arg == ARG_I4_O4 && (first < 1 || 16 < first)) {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 16)", &m->tag[0], first);
       }
       else if(m->arg == ARG_I4_O4 && count == 2 && (second < 1 || 16 < second)) {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 16)", &m->tag[0], second);
       }
       else if(m->arg == ARG_O8 && count >= 1 && (first < 0 || 255 < first)) {
+        result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 255)", &m->tag[0], first);
       }
@@ -751,6 +1012,7 @@ static void evmOptionalSerializer(const struct evm_mnemonic_s *m, evm_instructio
       }
     }
     else {
+      result = -1;
       i->flags |= INST_MISSING_ARG;
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
@@ -758,5 +1020,7 @@ static void evmOptionalSerializer(const struct evm_mnemonic_s *m, evm_instructio
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
+
+  return result;
 }
 

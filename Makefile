@@ -29,6 +29,11 @@ BINARIES := $(EXAMPLE_BIN) \
 all: $(BINARIES)
 
 
+clean:
+	rm -f $(BINARIES)
+	rm -f $(sort $(ASM_OBJS) $(EXAMPLE_OBJS))
+
+
 obj/%.o: src/%.c
 	$(COMPILE.c) -o $@ $<
 

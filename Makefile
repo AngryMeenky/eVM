@@ -17,9 +17,14 @@ ASM_BIN  := bin/evm-asm
 ASM_OBJS := obj/evm_asm.o obj/asm.o
 ASM_LIBS :=
 
+DISASM_BIN  := bin/evm-disasm
+DISASM_OBJS := obj/evm_disasm.o obj/opcodes.o obj/disasm.o
+DISASM_LIBS :=
+
 
 # final targets
 BINARIES := $(EXAMPLE_BIN) \
+						$(DISASM_BIN) \
             $(ASM_BIN)
 
 
@@ -44,4 +49,8 @@ $(EXAMPLE_BIN): $(EXAMPLE_OBJS)
 
 $(ASM_BIN): $(ASM_OBJS)
 	$(LINK.c) -o $@ $^ $(ASM_LIBS)
+
+
+$(DISASM_BIN): $(DISASM_OBJS)
+	$(LINK.c) -o $@ $^ $(DISASM_LIBS)
 

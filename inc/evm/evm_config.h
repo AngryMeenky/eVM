@@ -1,6 +1,13 @@
 #ifndef EVM_EVM_CONFIG_H
 #  define EVM_EVM_CONFIG_H
 
+// allow this to be determined once during compilation
+#ifdef EVM_IMPL
+#  define EVM_API
+#else
+#  define EVM_API extern
+#endif
+
 
 // config values
 // The maximum number of different builtin functions that can be called by the byte code

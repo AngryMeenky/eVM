@@ -7,12 +7,9 @@
 #include <stdint.h>
 
 
-#ifdef EVM_IMPL
-#  define EVM_API
-#else
-#  define EVM_API extern
+#ifdef __cplusplus
+extern "C" {
 #endif
-
 
 // the state of the virtual machine
 typedef struct evm_s {
@@ -65,6 +62,11 @@ EVM_API int evmRun(evm_t *vm, uint32_t maxOps);
 // status functions
 EVM_API int evmHasHalted(const evm_t *);
 EVM_API int evmHasYielded(const evm_t *);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif

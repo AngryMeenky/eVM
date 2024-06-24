@@ -3,6 +3,10 @@
 
 #include "evm/evm_config.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 typedef enum opcode_family_e {
   FAM_CALL = 0x00,
@@ -157,6 +161,14 @@ typedef enum opcode_e {
   OP_RET_14 = FAM_RET | 0x0E, // use the fifteenth value as a program pointer and remove it
   OP_RET_I  = FAM_RET | 0x0F, // use the next byte as the index for the program pointer
 } opcode_t;
+
+
+EVM_API const char *evmOpcodeToMnemonic(opcode_t);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif

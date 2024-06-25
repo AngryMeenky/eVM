@@ -170,7 +170,7 @@ static int32_t evmIllegalInstruction(evm_t *vm) {
 int evmHasHalted(const evm_t *vm) {
   int result;
   EVM_TRACE("Enter " __FUNCTION__);
-  result = vm ? (vm->flags & EVM_HALTED) == EVM_HALTED : -1;
+  result = vm ? (vm->flags & EVM_HALTED) == (uint32_t) EVM_HALTED : -1;
   EVM_TRACE("Exit " __FUNCTION__);
   return result;
 }
@@ -180,6 +180,59 @@ int evmHasYielded(const evm_t *vm) {
   int result;
   EVM_TRACE("Enter " __FUNCTION__);
   result = vm ? (vm->flags & EVM_YIELD) == EVM_YIELD : -1;
+  EVM_TRACE("Exit " __FUNCTION__);
+  return result;
+}
+
+
+int evmPush(evm_t *vm, int32_t val) {
+  int result = 0;
+  EVM_TRACE("Enter " __FUNCTION__);
+  if(vm) {
+    if(vm->sp < vm->maxStack) {
+      vm->stack[vm->sp++] = val;
+    }
+    else {
+      result = evmStackOverflow(vm);
+    }
+  }
+
+  EVM_TRACE("Exit " __FUNCTION__);
+  return result;
+}
+
+
+#if EVM_FLOAT_SUPPORT == 1
+int evmPushf(evm_t *vm, float val) {
+  int result = 0;
+  EVM_TRACE("Enter " __FUNCTION__);
+  if(vm) {
+    if(vm->sp < vm->maxStack) {
+      vm->stack[vm->sp++] = *(int32_t *) &val;
+    }
+    else {
+      result = evmStackOverflow(vm);
+    }
+  }
+
+  EVM_TRACE("Exit " __FUNCTION__);
+  return result;
+}
+#endif
+
+
+int evmPop(evm_t *vm) {
+  int result = 0;
+  EVM_TRACE("Enter " __FUNCTION__);
+  if(vm) {
+    if(vm->sp > 0) {
+      vm->sp--;
+    }
+    else {
+      result = evmStackUnderflow(vm);
+    }
+  }
+
   EVM_TRACE("Exit " __FUNCTION__);
   return result;
 }

@@ -63,6 +63,25 @@ EVM_API int evmRun(evm_t *vm, uint32_t maxOps);
 EVM_API int evmHasHalted(const evm_t *);
 EVM_API int evmHasYielded(const evm_t *);
 
+// simple query "functions"
+#define evmMaximumStack(EVM_PTR)    ((EVM_PTR)->maxStack)
+#define evmStackDepth(EVM_PTR)      ((EVM_PTR)->sp)
+#define evmStackValue(EVM_PTR, IDX) ((EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
+#define evmStackTop(EVM_PTR)        evmStackValue(EVM_PTR, 0U)
+#if EVM_FLOAT_SUPPORT == 1
+#  define evmStackTopf(EVM_PTR)     (*(float *) &evmStackValue(EVM_PTR, 0U))
+#endif
+
+#define evmProgramSize(EVM_PTR) ((EVM_PTR)->maxProgram)
+#define evmInstructionIndex(EVM_PTR) ((EVM_PTR)->ip)
+
+
+EVM_API int evmPush(evm_t *, int32_t);
+#if EVM_FLOAT_SUPPORT == 1
+EVM_API int evmPushf(evm_t *, float);
+#endif
+EVM_API int evmPop(evm_t *);
+
 
 #ifdef __cplusplus
 }

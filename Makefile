@@ -1,6 +1,6 @@
 # C compiler and flags.  Adjust to taste.
 CC := gcc
-CFLAGS := -O3
+CFLAGS := -O3 -MMD
 CPPFLAGS := -Iinc
 LDFLAGS :=
 
@@ -22,6 +22,9 @@ DISASM_OBJS := obj/evm_disasm.o obj/opcodes.o obj/disasm.o
 DISASM_LIBS :=
 
 
+OBJECTS := $(sort $(ASM_OBJS) $(DISASM_OBJS) $(EXAMPLE_OBJS))
+DEPS := $(OBJECTS:.o=.d)
+
 # final targets
 BINARIES := $(EXAMPLE_BIN) \
 						$(DISASM_BIN) \
@@ -36,7 +39,8 @@ all: $(BINARIES)
 
 clean:
 	rm -f $(BINARIES)
-	rm -f $(sort $(ASM_OBJS) $(EXAMPLE_OBJS))
+	rm -f $(OBJECTS)
+	rm -f $(DEPS)
 
 
 obj/%.o: src/%.c
@@ -53,4 +57,6 @@ $(ASM_BIN): $(ASM_OBJS)
 
 $(DISASM_BIN): $(DISASM_OBJS)
 	$(LINK.c) -o $@ $^ $(DISASM_LIBS)
+
+-include obj/*.d
 

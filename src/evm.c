@@ -91,7 +91,7 @@ int evmSetProgram(evm_t *vm, uint8_t *prog, uint32_t length) {
     vm->program[length] = OP_HALT; // halt terminate the program
 #endif
     vm->maxProgram = length;
-    vm->flags &= ~EVM_HALTED; // clear the halted flag on success
+    vm->flags &= ~(EVM_HALTED | EVM_YIELD); // clear the halt and yield flags on success
 
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
     EVM_TRACE("Exit " __FUNCTION__);

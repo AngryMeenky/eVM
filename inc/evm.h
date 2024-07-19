@@ -2,7 +2,7 @@
 #  define EVM_EVM_H
 
 
-#include "evm/evm_config.h"
+#include "evm/config.h"
 
 #include <stdint.h>
 

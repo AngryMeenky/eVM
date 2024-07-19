@@ -1,7 +1,7 @@
 #ifndef EVM_OPCODES_H
 #  define EVM_OPCODES_H
 
-#include "evm/evm_config.h"
+#include "evm/config.h"
 
 #ifdef __cplusplus
 extern "C" {

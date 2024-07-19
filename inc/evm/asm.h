@@ -2,7 +2,7 @@
 #  define EVM_EVM_ASSMBLER
 
 
-#include "evm/evm_config.h"
+#include "evm/config.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -16,6 +16,7 @@ extern "C" {
 typedef struct evm_instruction_s {
   struct evm_instruction_s *prev;
   struct evm_instruction_s *next;
+  const char               *file;
   uint32_t                  line;
   uint8_t                   binary[6];
   int8_t                    count;
@@ -43,8 +44,8 @@ EVM_API evm_assembler_t *evmasmInitialize(evm_assembler_t *);
 EVM_API evm_assembler_t *evmasmFinalize(evm_assembler_t *);
 EVM_API void             evmasmFree(evm_assembler_t *);
 
-EVM_API int evmasmParseFile(evm_assembler_t *, FILE *);
-EVM_API int evmasmParseLine(evm_assembler_t *, const char *, int num);
+EVM_API int evmasmParseFile(evm_assembler_t *, const char *, FILE *);
+EVM_API int evmasmParseLine(evm_assembler_t *, const char *, const char *, int num);
 
 EVM_API int evmasmValidateProgram(evm_assembler_t *);
 

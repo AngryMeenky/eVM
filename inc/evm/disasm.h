@@ -2,7 +2,7 @@
 #  define EVM_EVM_DISASSMBLER
 
 
-#include "evm/evm_config.h"
+#include "evm/config.h"
 
 #include <stdio.h>
 #include <stdint.h>

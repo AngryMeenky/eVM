@@ -1,4 +1,4 @@
-#include "evm/evm_asm.h"
+#include "evm/asm.h"
 #include "evm/opcodes.h"
 
 #include <ctype.h>
@@ -93,21 +93,31 @@ typedef struct evm_section_s {
 } evm_section_t;
 
 
+typedef struct evm_ptr_list_s {
+  struct evm_ptr_list_s *prev;
+  struct evm_ptr_list_s *next;
+  void                  *ptr;
+} evm_ptr_list_t;
+
+
 struct evm_program_s {
-  evm_section_t sections;
-  uint32_t      base;
-  uint32_t      length;
-  uint32_t      count;
+  evm_section_t  sections;
+  evm_ptr_list_t files;
+  uint32_t       base;
+  uint32_t       length;
+  uint32_t       count;
 };
 
 
 static void               evmasmClearLabelList(evm_label_t *);
+static void               evmasmClearFilesList(evm_ptr_list_t *);
 static void               evmasmClearSectionList(evm_section_t *);
 static void               evmasmClearInstructionList(evm_instruction_t *);
 static void               evmasmAppendInstruction(evm_instruction_t *, evm_instruction_t *);
-static evm_instruction_t *evmasmNewInstruction(const char *, const char *, uint32_t);
+static evm_instruction_t *evmasmNewInstruction(const char *, const char *, const char *, uint32_t);
 static evm_program_t     *evmasmNewProgram();
 static void               evmasmDeleteProgram(evm_program_t *);
+static const char *       evmasmCanonicalizeString(evm_program_t *, const char *);
 static evm_section_t     *evmasmNewSection(const char *);
 static void               evmasmDeleteSection(evm_section_t *);
 static evm_label_t       *evmasmNewLabel(const char *, uint32_t);
@@ -121,9 +131,18 @@ evm_assembler_t *evmasmAllocate() {
 
 evm_assembler_t *evmasmInitialize(evm_assembler_t *evm) {
   if(evm) {
-    memset((void *) evm, 0, sizeof(evm_assembler_t));
-    evm->head.prev = &evm->head;
-    evm->head.next = &evm->head;
+    evm_program_t *program = evmasmNewProgram();
+
+    if(program) {
+      memset((void *) evm, 0, sizeof(evm_assembler_t));
+      evm->head.prev = &evm->head;
+      evm->head.next = &evm->head;
+      evm->output = program;
+    }
+    else {
+      evmasmFinalize(evm);
+      evm = NULL;
+    }
   }
 
   return evm;
@@ -133,6 +152,9 @@ evm_assembler_t *evmasmInitialize(evm_assembler_t *evm) {
 evm_assembler_t *evmasmFinalize(evm_assembler_t *evm) {
   if(evm) {
     evmasmClearInstructionList(&evm->head);
+    if(evm->output) {
+      evmasmDeleteProgram(evm->output);
+    }
     memset((void *) evm, 0, sizeof(evm_assembler_t));
   }
 
@@ -145,7 +167,7 @@ void evmasmFree(evm_assembler_t *evm) {
 }
 
 
-int evmasmParseFile(evm_assembler_t *evm, FILE *fp) {
+int evmasmParseFile(evm_assembler_t *evm, const char *name, FILE *fp) {
   int result = 0;
 
   if(evm && fp) {
@@ -153,7 +175,7 @@ int evmasmParseFile(evm_assembler_t *evm, FILE *fp) {
     char buffer[BUFSIZ];
 
     while(fgets(&buffer[0], BUFSIZ, fp)) {
-      result |= evmasmParseLine(evm, &buffer[0], ++line);
+      result |= evmasmParseLine(evm, name, &buffer[0], ++line);
     }
   }
   else {
@@ -249,7 +271,7 @@ static const evm_mnemonic_t MNEMONICS[] = {
 };
 
 
-int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
+int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, int num) {
   const char *start = line;
   const char *end = &line[strlen(line)];
   const char *cur;
@@ -270,6 +292,8 @@ int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
 
   // empty string check
   if(start != end) {
+    name = evmasmCanonicalizeString(evm->output, name);
+
     if(*start == '.') {
       const evm_directive_t *directive;
       int handled = 0;
@@ -277,7 +301,7 @@ int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
       // parse directives
       for(directive = &DIRECTIVES[0]; directive->tag; ++directive) {
         if(!mnemonicCompare(&directive->tag[0], start, end)) {
-          evm_instruction_t *inst = evmasmNewInstruction(start, end, num);
+          evm_instruction_t *inst = evmasmNewInstruction(name, start, end, num);
           evmasmAppendInstruction(&evm->head, inst);
           result |= directive->process(directive, inst);
           handled = -1;
@@ -292,7 +316,7 @@ int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
     }
     else if(end[-1] == ':') {
       // process labels
-      evm_instruction_t *inst = evmasmNewInstruction(start, end - 1, num);
+      evm_instruction_t *inst = evmasmNewInstruction(name, start, end - 1, num);
       evmasmAppendInstruction(&evm->head, inst);
       inst->flags |= INST_LABEL;
     }
@@ -303,7 +327,7 @@ int evmasmParseLine(evm_assembler_t *evm, const char *line, int num) {
       // parse instructions
       for(mnemonic = &MNEMONICS[0]; mnemonic->tag; ++mnemonic) {
         if(!mnemonicCompare(&mnemonic->tag[0], start, end)) {
-          evm_instruction_t *inst = evmasmNewInstruction(start, end, num);
+          evm_instruction_t *inst = evmasmNewInstruction(name, start, end, num);
           evmasmAppendInstruction(&evm->head, inst);
           result |= mnemonic->process(mnemonic, inst);
           handled = -1;
@@ -447,9 +471,24 @@ static void evmasmClearLabelList(evm_label_t *list) {
 }
 
 
-static evm_instruction_t *evmasmNewInstruction(const char *start, const char *end, uint32_t line) {
+static void evmasmClearFilesList(evm_ptr_list_t *list) {
+  evm_ptr_list_t *node, *tmp;
+
+  for(node = list->next; node != list; node = tmp) {
+    tmp = node->next;
+    free(node);
+  }
+
+  list->prev = list;
+  list->next = list;
+}
+
+
+static evm_instruction_t *
+evmasmNewInstruction(const char *name, const char *start, const char *end, uint32_t line) {
   evm_instruction_t *inst = calloc(1, (end - start) + sizeof(evm_instruction_t) + 1U);
   if(inst) {
+    inst->file = name;
     inst->line = line;
     memcpy(&inst->text[0], start, end - start);
     inst->text[end - start] = '\0';
@@ -465,6 +504,8 @@ static evm_program_t *evmasmNewProgram() {
   if(prog) {
     prog->sections.prev = &prog->sections;
     prog->sections.next = &prog->sections;
+    prog->files.prev = &prog->files;
+    prog->files.next = &prog->files;
   }
 
   return prog;
@@ -474,8 +515,32 @@ static evm_program_t *evmasmNewProgram() {
 static void evmasmDeleteProgram(evm_program_t *prog) {
   if(prog) {
     evmasmClearSectionList(&prog->sections);
+    evmasmClearFilesList(&prog->files);
     free(prog);
   }
+}
+
+
+const char *evmasmCanonicalizeString(evm_program_t *prog, const char *str) {
+  evm_ptr_list_t *node;
+
+  for(node = prog->files.next; node != &prog->files; node = node->next) {
+    if(!strcmp(str, (const char *) node->ptr)) {
+      return (const char *) node->ptr;
+    }
+  }
+
+  node = calloc(1, sizeof(evm_ptr_list_t) + strlen(str) + 1);
+  if(node) {
+    node->ptr = strcpy((char *) &node[1], str);
+
+    node->prev = &prog->files;
+    node->next = prog->files.next;
+    prog->files.next->prev = node;
+    prog->files.next = node;
+  }
+
+  return NULL; // failure!
 }
 
 

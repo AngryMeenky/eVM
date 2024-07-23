@@ -7,6 +7,7 @@
 
 static int slurp(FILE *fp, uint8_t **buf, uint32_t *len, const char *exe, const char *name);
 static int32_t programChecksum(evm_t *vm);
+static int32_t programDump(evm_t *vm);
 static int32_t stackDump(evm_t *vm);
 
 int main(int argc, char **argv) {
@@ -67,7 +68,7 @@ int main(int argc, char **argv) {
 const EvmBuiltinFunction EVM_BUILTINS[EVM_MAX_BUILTINS] = {
   &programChecksum,
   &stackDump,
-  &evmUnboundHandler,
+  &programDump,
   &evmUnboundHandler,
   &evmUnboundHandler,
   &evmUnboundHandler,
@@ -113,6 +114,11 @@ static int32_t programChecksum(evm_t *vm) {
   }
 
   return sum;
+}
+
+
+static int32_t programDump(evm_t *vm) {
+  return 0;
 }
 
 

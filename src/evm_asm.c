@@ -117,7 +117,7 @@ static void               evmasmAppendInstruction(evm_instruction_t *, evm_instr
 static evm_instruction_t *evmasmNewInstruction(const char *, const char *, const char *, uint32_t);
 static evm_program_t     *evmasmNewProgram();
 static void               evmasmDeleteProgram(evm_program_t *);
-static const char *       evmasmCanonicalizeString(evm_program_t *, const char *);
+static const char        *evmasmCanonicalizeString(evm_ptr_list_t *, const char *);
 static evm_section_t     *evmasmNewSection(const char *);
 static void               evmasmDeleteSection(evm_section_t *);
 static evm_label_t       *evmasmNewLabel(const char *, uint32_t);
@@ -292,7 +292,7 @@ int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, in
 
   // empty string check
   if(start != end) {
-    name = evmasmCanonicalizeString(evm->output, name);
+    name = evmasmCanonicalizeString(&evm->output->files, name);
 
     if(*start == '.') {
       const evm_directive_t *directive;
@@ -303,7 +303,7 @@ int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, in
         if(!mnemonicCompare(&directive->tag[0], start, end)) {
           evm_instruction_t *inst = evmasmNewInstruction(name, start, end, num);
           evmasmAppendInstruction(&evm->head, inst);
-          result |= directive->process(directive, inst);
+          result = directive->process(directive, inst);
           handled = -1;
           break;
         }
@@ -329,7 +329,7 @@ int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, in
         if(!mnemonicCompare(&mnemonic->tag[0], start, end)) {
           evm_instruction_t *inst = evmasmNewInstruction(name, start, end, num);
           evmasmAppendInstruction(&evm->head, inst);
-          result |= mnemonic->process(mnemonic, inst);
+          result = mnemonic->process(mnemonic, inst);
           handled = -1;
           break;
         }
@@ -350,21 +350,107 @@ int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, in
 
 
 int evmasmValidateProgram(evm_assembler_t *evm) {
-  // TODO: ensure no duplicate labels
-  // TODO: ensure all jmp targets are resolved
-  // TODO: ensure that no sections overlap
-  // TODO: ensure that all sections contain data or instructions
-  // TODO: ensure first byte is a valid instruction and not data
-  return -1;
+  int result = 0;
+
+  if(evm) {
+    evm_ptr_list_t     list;
+    evm_program_t     *prog = evm->output;
+    evm_instruction_t *insts = &evm->head;
+    evm_instruction_t *inst;
+    evm_section_t     *sects = &prog->sections;
+    evm_section_t     *sect = NULL;
+
+    // build the sections based on instruction stream
+    for(inst = insts->next; inst != insts; inst = inst->next) {
+      if(inst->flags & (INST_MISSING_ARG | INST_INVALID_ARG)) {
+        result |= 1; // missing or bad argument on a specific instruction/directive
+      }
+
+      if(inst->flags & INST_DIRECTIVE) {
+        switch((evm_dir_t) inst->binary[0]) {
+          case DIR_BASE:
+            // set the base for the current section
+          break;
+
+          case DIR_NAME:
+            // create a new section or select a previous section with the given name
+          break;
+
+          case DIR_DATA:
+            // data directive
+          break;
+        }
+      }
+      else if(inst->flags & INST_LABEL) {
+        // add the label to the current section
+      }
+    }
+
+    // ensure no duplicate labels
+    list.prev = &list;
+    list.next = &list;
+    for(sect = sects->next; sect != sects; sect = sect->next) {
+      evm_label_t *labels = &sect->labels;
+      evm_label_t *label;
+
+      for(label = labels->next; label != labels; label = label->next) {
+        evm_ptr_list_t *node;
+
+        for(node = list.next; node != &list; node = node->next) {
+          if(!strcmp(&label->name[0], (const char *) node->ptr)) {
+            break; // found duplicate
+          }
+        }
+
+        if(node != &list) {
+          // report error
+          EVM_ERRORF("Duplicate label: %s", &label->name[0]);
+          result |= 2;
+        }
+        else {
+          evmasmCanonicalizeString(&list, &label->name[0]);
+        }
+      }
+    }
+
+
+    // ensure all jmp targets are resolved
+    for(inst = insts->next; inst != insts; inst = inst->next) {
+      if(inst->flags & INST_UNRESOLVED) {
+        evm_ptr_list_t *node;
+
+        for(node = list.next; node != &list; node = node->next) {
+          if(!strcmp(&inst->text[inst->binary[1]], (const char *) node->ptr)) {
+            break; // found the target
+          }
+        }
+
+        if(node != &list) {
+          // report error
+          EVM_ERRORF("Missing label in %s on line %d: %s", inst->file, inst->line, &inst->text[0]);
+          result |= 4;
+        }
+      }
+    }
+
+    // TODO: ensure that no sections overlap
+    for(sect = sects->next; sect != sects; sect = sect->next) {
+    }
+
+    // TODO: serialize the instructions into their respective sections
+    // TODO: ensure that all sections contain data or instructions
+    // TODO: ensure first byte is a valid instruction and not data
+  }
+  else {
+    result = -1;
+  }
+
+  return result;
 }
 
 
 uint32_t evmasmProgramSize(const evm_assembler_t *evm) {
-  if(evm) {
-    return evm->length;
-  }
-
-  return 0;
+  return evm ? evm->length : 0;
 }
 
 
@@ -521,10 +607,10 @@ static void evmasmDeleteProgram(evm_program_t *prog) {
 }
 
 
-const char *evmasmCanonicalizeString(evm_program_t *prog, const char *str) {
+const char *evmasmCanonicalizeString(evm_ptr_list_t *list, const char *str) {
   evm_ptr_list_t *node;
 
-  for(node = prog->files.next; node != &prog->files; node = node->next) {
+  for(node = list->next; node != list; node = node->next) {
     if(!strcmp(str, (const char *) node->ptr)) {
       return (const char *) node->ptr;
     }
@@ -534,10 +620,10 @@ const char *evmasmCanonicalizeString(evm_program_t *prog, const char *str) {
   if(node) {
     node->ptr = strcpy((char *) &node[1], str);
 
-    node->prev = &prog->files;
-    node->next = prog->files.next;
-    prog->files.next->prev = node;
-    prog->files.next = node;
+    node->prev = list;
+    node->next = list->next;
+    list->next->prev = node;
+    list->next = node;
   }
 
   return NULL; // failure!

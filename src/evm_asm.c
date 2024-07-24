@@ -60,6 +60,8 @@ struct evm_directive_s {
 struct evm_mnemonic_s;
 typedef struct evm_mnemonic_s evm_mnemonic_t;
 
+struct evm_section_s;
+typedef struct evm_section_s evm_section_t;
 
 typedef int (*evm_serializer_t)(const struct evm_mnemonic_s *, evm_instruction_t *);
 
@@ -75,22 +77,34 @@ struct evm_mnemonic_s {
 typedef struct evm_label_s {
   struct evm_label_s *next;
   struct evm_label_s *prev;
+  evm_section_t      *section;
   uint32_t            offset;
   uint32_t            id;
   char                name[];
 } evm_label_t;
 
 
-typedef struct evm_section_s {
-  struct evm_section_s *next;
-  struct evm_section_s *prev;
-  uint8_t              *contents;
-  evm_label_t           labels;
-  uint32_t              base;
-  uint32_t              length;
-  uint32_t              capacity;
-  char                  name[];
-} evm_section_t;
+typedef struct evm_instruction_ref_s {
+  struct evm_instruction_ref_s *next;
+  evm_label_t                  *target;
+  evm_instruction_t            *instruction;
+  int32_t                       offset;
+  int32_t                       size;
+} evm_instruction_ref_t;
+
+
+struct evm_section_s {
+  evm_section_t         *next;
+  evm_section_t         *prev;
+  uint8_t               *contents;
+  evm_label_t            labels;
+  evm_instruction_ref_t *instructions;
+  evm_instruction_ref_t *tail;
+  uint32_t               base;
+  uint32_t               length;
+  uint32_t               capacity;
+  char                   name[];
+};
 
 
 typedef struct evm_ptr_list_s {
@@ -120,7 +134,11 @@ static void               evmasmDeleteProgram(evm_program_t *);
 static const char        *evmasmCanonicalizeString(evm_ptr_list_t *, const char *);
 static evm_section_t     *evmasmNewSection(const char *);
 static void               evmasmDeleteSection(evm_section_t *);
+static evm_section_t     *evmasmCanonicalizeSection(evm_section_t *, const char *);
+static void               evmasmAddToSection(evm_section_t *, evm_instruction_t *);
+static uint32_t           evmasmCalculateLikelySectionLength(evm_section_t *);
 static evm_label_t       *evmasmNewLabel(const char *, uint32_t);
+static evm_label_t       *evmasmAppendLabel(evm_section_t *, const char *);
 static int                mnemonicCompare(const char *, const char *, const char *);
 
 
@@ -370,19 +388,73 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
         switch((evm_dir_t) inst->binary[0]) {
           case DIR_BASE:
             // set the base for the current section
+            if(sect) {
+              sect->base = inst->binary[1] | (inst->binary[2] << 8) | (inst->binary[3] << 16);
+            }
+            else {
+              EVM_ERRORF(
+                "Section not yet specified in %s on line %d: %s",
+                inst->file, inst->line, &inst->text[0]
+              );
+              result |= 8;
+            }
           break;
 
           case DIR_NAME:
             // create a new section or select a previous section with the given name
+            sect = evmasmCanonicalizeSection(sects, &inst->text[inst->binary[1]]);
           break;
 
           case DIR_DATA:
-            // data directive
+            // data directive insert the data into the instruction stream
+            if(sect) {
+              evmasmAddToSection(sect, inst);
+            }
+            else {
+              EVM_ERRORF(
+                "Section not yet specified in %s on line %d: %s",
+                inst->file, inst->line, &inst->text[0]
+              );
+              result |= 8;
+            }
           break;
         }
       }
       else if(inst->flags & INST_LABEL) {
         // add the label to the current section
+        if(sect) {
+          evm_label_t *label = evmasmAppendLabel(sect, &inst->text[inst->binary[1]]);
+          if(label) {
+            label->offset = evmasmCalculateLikelySectionLength(sect);
+          }
+          else {
+            EVM_ERRORF(
+              "Failure to create label in %s on line %d: %s",
+              inst->file, inst->line, &inst->text[0]
+            );
+            result |= 16;
+          }
+        }
+        else {
+          EVM_ERRORF(
+            "Section not yet specified in %s on line %d: %s",
+            inst->file, inst->line, &inst->text[0]
+          );
+          result |= 8;
+        }
+      }
+      else {
+        // assign each instruction to the correct section
+        if(sect) {
+          evmasmAddToSection(sect, inst);
+        }
+        else {
+          EVM_ERRORF(
+            "Section not yet specified in %s on line %d: %s",
+            inst->file, inst->line, &inst->text[0]
+          );
+          result |= 8;
+        }
       }
     }
 
@@ -413,33 +485,109 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
       }
     }
 
-
     // ensure all jmp targets are resolved
-    for(inst = insts->next; inst != insts; inst = inst->next) {
-      if(inst->flags & INST_UNRESOLVED) {
-        evm_ptr_list_t *node;
+    for(sect = sects->next; sect != sects; sect = sect->next) {
+      evm_instruction_ref_t *ref;
 
-        for(node = list.next; node != &list; node = node->next) {
-          if(!strcmp(&inst->text[inst->binary[1]], (const char *) node->ptr)) {
-            break; // found the target
+      for(ref = sect->instructions; ref; ref = ref->next) {
+        inst = ref->instruction;
+
+        if(inst->flags & INST_UNRESOLVED) {
+          evm_section_t *section;
+          const char *name = (char *) &inst->text[inst->binary[1]];
+         
+          for(section = sects->next; section != sects; section = section->next) {
+            evm_label_t *labels = &sect->labels;
+            evm_label_t *label;
+
+            for(label = labels->next; label != labels; label = label->next) {
+              if(!strcmp(&label->name[0], name)) {
+                // found target label
+                ref->target = label;
+                section = sects->prev;
+                break;
+              }
+            }
           }
-        }
 
-        if(node != &list) {
-          // report error
-          EVM_ERRORF("Missing label in %s on line %d: %s", inst->file, inst->line, &inst->text[0]);
-          result |= 4;
+          if(ref->target) {
+            // mark as resolved but not finalized
+            inst->flags &= ~(INST_UNRESOLVED | INST_FINALIZED);
+          }
+          else {
+            // report error
+            EVM_ERRORF(
+              "Missing label in %s on line %d: %s",
+              inst->file, inst->line, &inst->text[0]
+            );
+            result |= 4;
+          }
         }
       }
     }
 
-    // TODO: ensure that no sections overlap
-    for(sect = sects->next; sect != sects; sect = sect->next) {
+    // only process further if there have been no errors
+    if(!result) {
+      // sort the sections on base address
+      for(sect = sects->next; sect != sects; sect = sect->next) {
+        evm_section_t *min = sect;
+        evm_section_t *test;
+
+        // find the minimum base offset
+        for(test = sect->next; test != sects; test = test->next) {
+          if(test->base < min->base) {
+            min = test;
+          }
+        }
+
+        // swap if required
+        if(sect != min) {
+          evm_section_t *ptrs[4] = { sect->prev, sect->next, min->prev, min->next };
+
+          // point min at sect's neighbors
+          min->prev = ptrs[0];
+          min->next = ptrs[1];
+          min->prev->next = min;
+          min->next->prev = min;
+
+          // point sect at min's neighbors
+          sect->prev = ptrs[2];
+          sect->next = ptrs[3];
+          sect->prev->next = sect;
+          sect->next->prev = sect;
+        }
+      }
+
+      // attempt to finalize the jump instructions to obtain proper offsets for labels
+      for(sect = sects->next; sect != sects; sect = sect->next) {
+        sect->capacity = evmasmCalculateLikelySectionLength(sect);
+        if((sect->contents = calloc(sect->capacity, 1))) {
+          evm_instruction_ref_t *ref;
+
+          for(ref = sect->instructions; ref; ref = ref->next) {
+            inst = ref->instruction;
+
+            // check for instructions that need finalizing
+            if(!(inst->flags & INST_FINALIZED)) {
+              // choose a jump target size 
+            }
+            // count the expected number of serialized bytes 
+          }
+        }
+        else {
+          result = -1;
+          break;
+        }
+        sect->length = 0;
+      }
     }
 
-    // TODO: serialize the instructions into their respective sections
-    // TODO: ensure that all sections contain data or instructions
-    // TODO: ensure first byte is a valid instruction and not data
+      // TODO: serialize the instructions into their respective sections
+      // TODO: ensure that no sections overlap
+
+      // TODO: ensure that all sections contain data or instructions
+
+      // TODO: ensure first byte is a valid instruction and not data
   }
   else {
     result = -1;
@@ -657,6 +805,93 @@ static void evmasmDeleteSection(evm_section_t *section) {
 }
 
 
+static evm_section_t *evmasmCanonicalizeSection(evm_section_t *list, const char *name) {
+  evm_section_t *section = NULL;
+
+  if(list) {
+    for(section = list->next; section != list; section = section->next) {
+      if(!strcmp(name, &section->name[0])) {
+        break; // found it
+      }
+    }
+
+    if(section == list) {
+      // append to list if not found
+      section = evmasmNewSection(name);
+      section->prev = list->prev;
+      list->prev->next = section;
+      section->next = list;
+      list->prev = section;
+    }
+  }
+  else {
+    if((section = evmasmNewSection(name))) {
+      section->prev = section;
+      section->next = section;
+    }
+  }
+
+  return section;
+}
+
+
+static void evmasmAddToSection(evm_section_t *section, evm_instruction_t *inst) {
+  if(section) {
+    evm_instruction_ref_t *ref = calloc(1, sizeof(evm_instruction_ref_t));
+
+    if(ref) {
+      if(section->instructions) {
+        ref->offset = section->tail->offset + section->tail->size;
+        section->tail->next = ref;
+        section->tail = ref;
+      }
+      else {
+        section->instructions = section->tail = ref;
+      }
+
+      ref->instruction = inst;
+
+      if(!(inst->flags & ~INST_FINALIZED)) {
+        // assume the simple serializer has done a good job except for jumps and calls
+        if((inst->binary[0] & 0xF0) == FAM_JMP) {
+          // tables are difficult, and must be handled after the jump array has been added
+          if((inst->binary[0] & OP_JTBL) != OP_JTBL) {
+            ref->size = 3; // assume the largest possible jump
+          }
+          else {
+            ref->size = 1; // only account for the opcode and ignore the jump table
+          }
+        }
+        // wait for all labels to be resolved to make a selection about the size of the jump
+        else if(inst->binary[0] == OP_CALL || inst->binary[0] == OP_LCALL) {
+            ref->size = 4; // assume the largest possible jump
+        }
+        else {
+          ref->size = inst->count;
+        }
+      }
+      else {
+        // directives and invalid instructions don't add to the binary
+        ref->size = 0;
+      }
+    }
+  }
+}
+
+
+static uint32_t evmasmCalculateLikelySectionLength(evm_section_t *section) {
+  uint32_t length = 0U;
+
+  if(section && section->tail) {
+    evm_instruction_ref_t *inst = section->tail;
+
+    length = inst->offset + inst->size;
+  }
+
+  return length;
+}
+
+
 static evm_label_t *evmasmNewLabel(const char *name, uint32_t id) {
   evm_label_t *label = calloc(1, sizeof(evm_label_t) + strlen(name) + 1U);
 
@@ -664,6 +899,23 @@ static evm_label_t *evmasmNewLabel(const char *name, uint32_t id) {
     label->offset = 0xFF000000U; // maximum section size is 24bits
     label->id = id;
     strcpy(&label->name[0], name);
+  }
+
+  return label;
+}
+
+
+static evm_label_t *evmasmAppendLabel(evm_section_t *section, const char *name) {
+  evm_label_t *label = NULL;
+ 
+  if(section) {
+    if((label = evmasmNewLabel(name, ++section->labels.id))) {
+      label->section = section;
+      label->next = &section->labels;
+      label->prev = section->labels.prev;
+      section->labels.prev->next = label;
+      section->labels.prev = label;
+    }
   }
 
   return label;

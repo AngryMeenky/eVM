@@ -39,6 +39,7 @@ typedef enum evm_dir_e {
   DIR_BASE,
   DIR_NAME,
   DIR_DATA,
+  DIR_TBL,
 } evm_dir_t;
 
 
@@ -213,6 +214,7 @@ static int evmAddressDirective(const evm_directive_t *, evm_instruction_t *);
 static const evm_directive_t DIRECTIVES[] = {
   { ".name",   &evmTextDirective,    ARG_LBL,  DIR_NAME },
   { ".offset", &evmAddressDirective, ARG_I24,  DIR_BASE },
+  { ".addr",   &evmTextDirective,    ARG_LBL,  DIR_TBL  },
   { ".db",     &evmDataDirective,    ARG_I8,   DIR_DATA },
   { ".dh",     &evmDataDirective,    ARG_I16,  DIR_DATA },
   { ".dw",     &evmDataDirective,    ARG_I32,  DIR_DATA },
@@ -260,14 +262,22 @@ static const evm_mnemonic_t MNEMONICS[] = {
   { "BOOL",  ARG_NONE,  OP_BOOL,    &evmSimpleSerializer   },
   { "NOT",   ARG_NONE,  OP_NOT,     &evmSimpleSerializer   },
   { "CMP",   ARG_O8,    OP_CMP_I0,  &evmCompareSerializer  }, // OP_CMP_{I0,I1,IN1,I}
-  { "JMP",   ARG_LBL,   OP_JMP,     &evmLabelSerializer    }, // OP_JMP,OP_LJMP
-  { "JLT",   ARG_LBL,   OP_JLT,     &evmLabelSerializer    }, // OP_JLT,OP_LJLT
-  { "JLE",   ARG_LBL,   OP_JLE,     &evmLabelSerializer    }, // OP_JLE,OP_LJLE
-  { "JNE",   ARG_LBL,   OP_JNE,     &evmLabelSerializer    }, // OP_JNE,OP_LJNE
-  { "JEQ",   ARG_LBL,   OP_JEQ,     &evmLabelSerializer    }, // OP_JEQ,OP_LJEQ
-  { "JGE",   ARG_LBL,   OP_JGE,     &evmLabelSerializer    }, // OP_JGE,OP_LJGE
-  { "JGT",   ARG_LBL,   OP_JGT,     &evmLabelSerializer    }, // OP_JGT,OP_LJGT
-  { "JTBL",  ARG_NONE,  OP_JTBL,    &evmSimpleSerializer   }, // OP_JTBL,OP_LJTBL
+  { "JMP",   ARG_LBL,   OP_JMP,     &evmLabelSerializer    },
+  { "JLT",   ARG_LBL,   OP_JLT,     &evmLabelSerializer    },
+  { "JLE",   ARG_LBL,   OP_JLE,     &evmLabelSerializer    },
+  { "JNE",   ARG_LBL,   OP_JNE,     &evmLabelSerializer    },
+  { "JEQ",   ARG_LBL,   OP_JEQ,     &evmLabelSerializer    },
+  { "JGE",   ARG_LBL,   OP_JGE,     &evmLabelSerializer    },
+  { "JGT",   ARG_LBL,   OP_JGT,     &evmLabelSerializer    },
+  { "JTBL",  ARG_NONE,  OP_JTBL,    &evmSimpleSerializer   },
+  { "LJMP",  ARG_LBL,   OP_JMP,     &evmLabelSerializer    },
+  { "LJLT",  ARG_LBL,   OP_JLT,     &evmLabelSerializer    },
+  { "LJLE",  ARG_LBL,   OP_JLE,     &evmLabelSerializer    },
+  { "LJNE",  ARG_LBL,   OP_JNE,     &evmLabelSerializer    },
+  { "LJEQ",  ARG_LBL,   OP_JEQ,     &evmLabelSerializer    },
+  { "LJGE",  ARG_LBL,   OP_JGE,     &evmLabelSerializer    },
+  { "LJGT",  ARG_LBL,   OP_JGT,     &evmLabelSerializer    },
+  { "LJTBL", ARG_NONE,  OP_JTBL,    &evmSimpleSerializer   },
   // OP_RET{,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_I}
   { "RET",   ARG_O8,    OP_RET,     &evmOptionalSerializer },
 #if EVM_FLOAT_SUPPORT == 1
@@ -377,6 +387,8 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
     evm_instruction_t *inst;
     evm_section_t     *sects = &prog->sections;
     evm_section_t     *sect = NULL;
+
+    evm->length = 0;
 
     // build the sections based on instruction stream
     for(inst = insts->next; inst != insts; inst = inst->next) {
@@ -511,8 +523,9 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
           }
 
           if(ref->target) {
-            // mark as resolved but not finalized
-            inst->flags &= ~(INST_UNRESOLVED | INST_FINALIZED);
+            // mark as resolved and finalized
+            inst->flags &= ~INST_UNRESOLVED;
+            inst->flags |= ~INST_FINALIZED;
           }
           else {
             // report error
@@ -558,36 +571,244 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
         }
       }
 
-      // attempt to finalize the jump instructions to obtain proper offsets for labels
+      // serialize the instructions into their respective sections
       for(sect = sects->next; sect != sects; sect = sect->next) {
         sect->capacity = evmasmCalculateLikelySectionLength(sect);
+        sect->length = 0;
+
+        if(sect->contents) {
+          free(sect->contents); // avoid memory leaks
+        }
+
         if((sect->contents = calloc(sect->capacity, 1))) {
           evm_instruction_ref_t *ref;
+          evm_label_t *target;
+          enum { INVALID, SHORT, LONG } mode = INVALID;
+          int delta;
 
           for(ref = sect->instructions; ref; ref = ref->next) {
             inst = ref->instruction;
 
-            // check for instructions that need finalizing
-            if(!(inst->flags & INST_FINALIZED)) {
-              // choose a jump target size 
+            if(inst->flags & INST_DIRECTIVE) { // handle the data/address directives
+              switch(inst->binary[0]) {
+                case DIR_DATA:
+                  memcpy(&sect->contents[sect->length], &inst->binary[1], ref->size);
+                  sect->length += ref->size;
+                break;
+
+                case DIR_TBL:
+                  switch(mode) {
+                    case SHORT:
+                      target = ref->target;
+                      delta = (target->section->base + target->offset) -
+                              (sect->base + ref->offset);
+
+                      if(-128 <= delta && delta <= 127) {
+                        sect->contents[sect->length++] = (int8_t) delta;
+                      }
+                      else {
+                        // report error
+                        EVM_ERRORF(
+                          "Jump too far in %s on line %d: %s",
+                          inst->file, inst->line, &inst->text[0]
+                        );
+                        result |= 64;
+                      }
+                    break;
+
+                    case LONG:
+                      target = ref->target;
+                      delta = (target->section->base + target->offset) -
+                              (sect->base + ref->offset);
+
+                      if(-32768 <= delta && delta <= 32767) {
+                        sect->contents[sect->length++] =  delta       & 0xFF;
+                        sect->contents[sect->length++] = (delta >> 8) & 0xFF;
+                      }
+                      else {
+                        // report error
+                        EVM_ERRORF(
+                          "Jump too far in %s on line %d: %s",
+                          inst->file, inst->line, &inst->text[0]
+                        );
+                        result |= 64;
+                      }
+                    break;
+
+                    default:
+                      // report error
+                      EVM_ERRORF(
+                        "Table entry without preceding jump instruction in %s on line %d: %s",
+                        inst->file, inst->line, &inst->text[0]
+                      );
+                      result |= 128;
+                    break;
+                  }
+                break;
+
+                default:
+                  // nothing to do
+                break;
+              }
             }
-            // count the expected number of serialized bytes 
+            else { // handle normal instructions
+              switch(inst->binary[0]) {
+                default:
+                  mode = INVALID;
+                  memcpy(&sect->contents[sect->length], &inst->binary[0], inst->count);
+                  sect->length += inst->count;
+                break;
+
+                // short jumps
+                case OP_JMP:
+                case OP_JLT:
+                case OP_JLE:
+                case OP_JNE:
+                case OP_JEQ:
+                case OP_JGE:
+                case OP_JGT:
+                  mode = INVALID;
+                  target = ref->target;
+                  delta = (target->section->base + target->offset) - (sect->base + ref->offset);
+
+                  if(-128 <= delta && delta <= 127) {
+                    sect->contents[sect->length++] = inst->binary[0];
+                    sect->contents[sect->length++] = (int8_t) delta;
+                  }
+                  else {
+                    // report error
+                    EVM_ERRORF(
+                      "Jump too far in %s on line %d: %s",
+                      inst->file, inst->line, &inst->text[0]
+                    );
+                    result |= 64;
+                  }
+                break;
+
+                // short jump table
+                case OP_JTBL:
+                  mode = SHORT;
+                  sect->contents[sect->length++] = inst->binary[0];
+                break;
+
+                // long jumps
+                case OP_LJMP:
+                case OP_LJLT:
+                case OP_LJLE:
+                case OP_LJNE:
+                case OP_LJEQ:
+                case OP_LJGE:
+                case OP_LJGT:
+                case OP_CALL:
+                  mode = INVALID;
+                  target = ref->target;
+                  delta = (target->section->base + target->offset) - (sect->base + ref->offset);
+
+                  if(-32768 <= delta && delta <= 32767) {
+                    sect->contents[sect->length++] = inst->binary[0];
+                    sect->contents[sect->length++] =  delta       & 0xFF;
+                    sect->contents[sect->length++] = (delta >> 8) & 0xFF;
+                  }
+                  else {
+                    // report error
+                    EVM_ERRORF(
+                      "Jump too far in %s on line %d: %s",
+                      inst->file, inst->line, &inst->text[0]
+                    );
+                    result |= 64;
+                  }
+                break;
+
+                // long jump table
+                case OP_LJTBL:
+                  mode = SHORT;
+                  sect->contents[sect->length++] = inst->binary[0];
+                break;
+
+                // extremely long jump
+                case OP_LCALL:
+                  target = ref->target;
+                  delta = (target->section->base + target->offset) - (sect->base + ref->offset);
+
+                  if(-8388608 <= delta && delta <= 8388607) {
+                    sect->contents[sect->length++] = inst->binary[0];
+                    sect->contents[sect->length++] =  delta        & 0xFF;
+                    sect->contents[sect->length++] = (delta >>  8) & 0xFF;
+                    sect->contents[sect->length++] = (delta >> 16) & 0xFF;
+                  }
+                  else {
+                    // report error
+                    EVM_ERRORF(
+                      "Jump too far in %s on line %d: %s",
+                      inst->file, inst->line, &inst->text[0]
+                    );
+                    result |= 64;
+                  }
+                break;
+              }
+            }
           }
         }
         else {
-          result = -1;
+          // report error
+          EVM_ERRORF("Unable to allocate memory for section: %s", &sect->name[0]);
+          result |= 32;
           break;
         }
-        sect->length = 0;
       }
     }
 
-      // TODO: serialize the instructions into their respective sections
-      // TODO: ensure that no sections overlap
+    if(!result) {
+      // ensure that no sections overlap
+      for(sect = sects->next; ; sect = sect->next) {
+        if(sect->next != sects) {
+          if(!sect->length) {
+            // report error
+            EVM_ERRORF("Section %s is empty", &sect->name[0]);
+            result |= 256;
+          }
+          else if((sect->base + sect->length) > sect->next->base) {
+            // report error
+            EVM_ERRORF("Sections %s and %s overlap", &sect->name[0], &sect->next->name[0]);
+            result |= 512;
+          }
+        }
+        else {
+          break;
+        }
+      }
+    }
 
-      // TODO: ensure that all sections contain data or instructions
+    if(!result) {
+      evm_instruction_ref_t *ref;
 
-      // TODO: ensure first byte is a valid instruction and not data
+      // ensure first byte is a valid instruction and not data
+      for(ref = sects->next->instructions; ref; ref = ref->next) {
+        inst = ref->instruction;
+
+        if(inst->flags & INST_DIRECTIVE) {
+          if(inst->binary[0] == DIR_DATA || inst->binary[0] == DIR_TBL) {
+            // report error
+            EVM_ERRORF(
+              "First byte is not an instruction in %s from line %d: %s",
+              inst->file, inst->line, &inst->text[0]
+            );
+            result |= 1024;
+          }
+        }
+        else if(inst->flags & INST_LABEL) {
+          // ignore normal lables
+        }
+        else {
+          break; // any regular instruction counts
+        }
+      }
+    }
+
+    if(!result) {
+      // update the program length
+      evm->length = sects->prev->base + sects->prev->length;
+    }
   }
   else {
     result = -1;
@@ -604,7 +825,7 @@ uint32_t evmasmProgramSize(const evm_assembler_t *evm) {
 
 uint32_t evmasmProgramToBuffer(const evm_assembler_t *evm, uint8_t *buf, uint32_t max) {
   if(evm && buf) {
-    if(evm->output || !evmasmValidateProgram((evm_assembler_t *) evm)) {
+    if(evm->length || !evmasmValidateProgram((evm_assembler_t *) evm)) {
       if(evm->length <= max) {
         evm_program_t *prog = evm->output;
         evm_section_t *s;
@@ -628,17 +849,18 @@ uint32_t evmasmProgramToBuffer(const evm_assembler_t *evm, uint8_t *buf, uint32_
 int evmasmProgramToFile(const evm_assembler_t *evm, FILE *fp) {
   if(evm && fp) {
     int result = 0;
-    if(evm->output || !evmasmValidateProgram((evm_assembler_t *) evm)) {
+    if(evm->length || !evmasmValidateProgram((evm_assembler_t *) evm)) {
       uint8_t *buffer = malloc(evm->length);
 
       if(buffer) {
         if(!evmasmProgramToBuffer(evm, buffer, evm->length)) {
           result = fwrite(buffer, 1, evm->length, fp) == evm->length ? 0 : -1;
-          free(buffer);
         }
         else {
           result = -1;
         }
+
+        free(buffer);
       }
       else {
         result = -1;
@@ -851,27 +1073,58 @@ static void evmasmAddToSection(evm_section_t *section, evm_instruction_t *inst) 
 
       ref->instruction = inst;
 
-      if(!(inst->flags & ~INST_FINALIZED)) {
+      if(!(inst->flags & INST_DIRECTIVE)) {
         // assume the simple serializer has done a good job except for jumps and calls
         if((inst->binary[0] & 0xF0) == FAM_JMP) {
-          // tables are difficult, and must be handled after the jump array has been added
-          if((inst->binary[0] & OP_JTBL) != OP_JTBL) {
-            ref->size = 3; // assume the largest possible jump
-          }
-          else {
-            ref->size = 1; // only account for the opcode and ignore the jump table
+          switch(inst->binary[0]) {
+            // short jumps
+            case OP_JMP:
+            case OP_JLT:
+            case OP_JLE:
+            case OP_JNE:
+            case OP_JEQ:
+            case OP_JGE:
+            case OP_JGT:
+              ref->size = 2;
+            break;
+
+            // jump tables
+            case OP_JTBL:
+            case OP_LJTBL:
+              ref->size = 1; // actual size depends on table size
+            break;
+
+            // long jumps
+            case OP_LJMP:
+            case OP_LJLT:
+            case OP_LJLE:
+            case OP_LJNE:
+            case OP_LJEQ:
+            case OP_LJGE:
+            case OP_LJGT:
+              ref->size = 2;
+            break;
           }
         }
         // wait for all labels to be resolved to make a selection about the size of the jump
-        else if(inst->binary[0] == OP_CALL || inst->binary[0] == OP_LCALL) {
-            ref->size = 4; // assume the largest possible jump
+        else if(inst->binary[0] == OP_CALL) {
+            ref->size = 3; // long jump
+        }
+        else if(inst->binary[0] == OP_LCALL) {
+            ref->size = 4; // longest possible jump
         }
         else {
-          ref->size = inst->count;
+          ref->size = inst->count; // assume the serializer got it right
         }
       }
+      else if(inst->binary[0] == DIR_DATA) {
+        ref->size = inst->count - 1;
+      }
+      else if(inst->binary[0] == DIR_TBL) {
+        ref->size = 2; // assume long jump
+      }
       else {
-        // directives and invalid instructions don't add to the binary
+        // most directives and invalid instructions don't get added to the binary
         ref->size = 0;
       }
     }
@@ -1048,7 +1301,7 @@ static int evmTextDirective(const evm_directive_t *d, evm_instruction_t *i) {
   int result = 0;
 
   i->binary[0] = d->kind;
-  i->flags |= INST_DIRECTIVE;
+  i->flags |= INST_DIRECTIVE | (d->kind == DIR_TBL ? INST_UNRESOLVED : 0);
   i->count = 1;
 
   if(d->arg == ARG_LBL) {
@@ -1060,7 +1313,7 @@ static int evmTextDirective(const evm_directive_t *d, evm_instruction_t *i) {
 
     if(*ptr) {
       i->binary[1] = (int8_t) (ptr - &i->text[0]);
-      i->flags |= INST_FINALIZED | INST_LABEL;
+      i->flags |= INST_LABEL | (d->kind != DIR_TBL ? INST_FINALIZED : 0);
       i->count++;
     }
     else {

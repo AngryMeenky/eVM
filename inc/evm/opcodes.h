@@ -134,14 +134,14 @@ typedef enum opcode_e {
   OP_JEQ   = FAM_JMP | 0x04, // near jump on equals comparison
   OP_JGE   = FAM_JMP | 0x05, // near jump on greater than or equals comparison
   OP_JGT   = FAM_JMP | 0x06, // near jump on greater than comparison
-  OP_LJMP  = FAM_JMP | 0x07, // unconditional far jump
-  OP_LJLT  = FAM_JMP | 0x08, // far jump on less than comparison
-  OP_LJLE  = FAM_JMP | 0x09, // far jump on less than or equals comparison
-  OP_LJNE  = FAM_JMP | 0x0A, // far jump on not equals comparison
-  OP_LJEQ  = FAM_JMP | 0x0B, // far jump on equals comparison
-  OP_LJGE  = FAM_JMP | 0x0C, // far jump on greater than or equals comparison
-  OP_LJGT  = FAM_JMP | 0x0D, // far jump on greater than comparison
-  OP_JTBL  = FAM_JMP | 0x0E, // use top of stack as an integer for jump destination table lookup
+  OP_JTBL  = FAM_JMP | 0x07, // use top of stack as an integer for jump destination table lookup
+  OP_LJMP  = FAM_JMP | 0x08, // unconditional far jump
+  OP_LJLT  = FAM_JMP | 0x09, // far jump on less than comparison
+  OP_LJLE  = FAM_JMP | 0x0A, // far jump on less than or equals comparison
+  OP_LJNE  = FAM_JMP | 0x0B, // far jump on not equals comparison
+  OP_LJEQ  = FAM_JMP | 0x0C, // far jump on equals comparison
+  OP_LJGE  = FAM_JMP | 0x0D, // far jump on greater than or equals comparison
+  OP_LJGT  = FAM_JMP | 0x0E, // far jump on greater than comparison
   OP_LJTBL = FAM_JMP | 0x0F, // use top of stack as an integer for jump destination table lookup
 
   OP_RET    = FAM_RET | 0x00, // use the top of stack as a program pointer and pop it

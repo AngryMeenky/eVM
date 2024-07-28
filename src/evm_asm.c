@@ -303,10 +303,12 @@ int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, in
   const char *start = line;
   const char *end = &line[strlen(line)];
   const char *cur;
-  int result = -1;
+  int result = 0;
 
   // trim leading whitespace
-  while(start != end && isspace(*start)) { ++start; }
+  while(start < end && isspace(*start)) { ++start; }
+  // trim trailing whitespace
+  while(start < &end[-1] && isspace(end[-1])) { --end; }
   // remove comments
   for(cur = start; cur < end; ++cur) {
     if(*cur == ';') {
@@ -369,9 +371,6 @@ int evmasmParseLine(evm_assembler_t *evm, const char *name, const char *line, in
       }
     }
   }
-  else {
-    result = 0; 
-  }
 
   return result;
 }
@@ -394,6 +393,11 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
     for(inst = insts->next; inst != insts; inst = inst->next) {
       if(inst->flags & (INST_MISSING_ARG | INST_INVALID_ARG)) {
         result |= 1; // missing or bad argument on a specific instruction/directive
+        EVM_ERRORF(
+          "Invalid instruction in %s on line %d: %s",
+          inst->file, inst->line, &inst->text[0]
+        );
+        continue;
       }
 
       if(inst->flags & INST_DIRECTIVE) {
@@ -419,6 +423,20 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
 
           case DIR_DATA:
             // data directive insert the data into the instruction stream
+            if(sect) {
+              evmasmAddToSection(sect, inst);
+            }
+            else {
+              EVM_ERRORF(
+                "Section not yet specified in %s on line %d: %s",
+                inst->file, inst->line, &inst->text[0]
+              );
+              result |= 8;
+            }
+          break;
+
+          case DIR_TBL:
+            // add the jump table entry to the current table
             if(sect) {
               evmasmAddToSection(sect, inst);
             }
@@ -525,7 +543,7 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
           if(ref->target) {
             // mark as resolved and finalized
             inst->flags &= ~INST_UNRESOLVED;
-            inst->flags |= ~INST_FINALIZED;
+            inst->flags |=  INST_FINALIZED;
           }
           else {
             // report error
@@ -847,14 +865,16 @@ uint32_t evmasmProgramToBuffer(const evm_assembler_t *evm, uint8_t *buf, uint32_
 
 
 int evmasmProgramToFile(const evm_assembler_t *evm, FILE *fp) {
+  int result = -1;
   if(evm && fp) {
-    int result = 0;
     if(evm->length || !evmasmValidateProgram((evm_assembler_t *) evm)) {
       uint8_t *buffer = malloc(evm->length);
 
       if(buffer) {
-        if(!evmasmProgramToBuffer(evm, buffer, evm->length)) {
-          result = fwrite(buffer, 1, evm->length, fp) == evm->length ? 0 : -1;
+        uint32_t size = evmasmProgramToBuffer(evm, buffer, evm->length);
+
+        if(size) {
+          result = fwrite(buffer, 1, size, fp) == size ? 0 : -1;
         }
         else {
           result = -1;
@@ -869,11 +889,9 @@ int evmasmProgramToFile(const evm_assembler_t *evm, FILE *fp) {
     else {
       result = -1;
     }
-
-    return result;
   }
 
-  return -1;
+  return result;
 }
 
 
@@ -1102,7 +1120,7 @@ static void evmasmAddToSection(evm_section_t *section, evm_instruction_t *inst) 
             case OP_LJEQ:
             case OP_LJGE:
             case OP_LJGT:
-              ref->size = 2;
+              ref->size = 3;
             break;
           }
         }
@@ -1188,7 +1206,7 @@ static int mnemonicCompare(const char *tag, const char *start, const char *end) 
     if(*tag) {
       result = 1; // tag is longer than the mnemonic
     }
-    else if(start != end && (!isspace(*start) || *start != ';')) {
+    else if(start != end && !(isspace(*start) || *start == ';')) {
       result = -1; // mnemonic is longer than the tag
     }
   }

@@ -84,7 +84,7 @@ static int slurp(FILE *fp, uint8_t **buffer, uint32_t *length, const char *exe, 
 
   if(!fseek(fp, 0L, SEEK_END) && (size = ftell(fp)) >= 0 && !fseek(fp, 0L, SEEK_SET)) {
     if((*buffer = malloc(size))) {
-      if(fread(buffer, 1, size, fp) == size) {
+      if(fread(buffer, 1, size, fp) == (size_t) size) {
         *length = (uint32_t) size;
       }
       else {
@@ -118,6 +118,7 @@ static int32_t programChecksum(evm_t *vm) {
 
 
 static int32_t programDump(evm_t *vm) {
+  (void) vm;
   return 0;
 }
 

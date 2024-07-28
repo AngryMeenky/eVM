@@ -1,8 +1,19 @@
 # C compiler and flags.  Adjust to taste.
 CC := gcc
-CFLAGS := -O3 -MMD
+CFLAGS := -MMD -Wall -Wextra -Werror -fno-strict-aliasing
 CPPFLAGS := -Iinc
 LDFLAGS :=
+
+
+ifneq ($(filter debug,$(MAKECMDGOALS)),)
+  # debug specific flags/options
+  CFLAGS += -g
+  DO_STRIP := 0
+else
+  # release specific flags/options
+  CFLAGS += -O3
+  DO_STRIP := 1
+endif
 
 # Binary optimiser
 STRIP := strip
@@ -27,11 +38,15 @@ DEPS := $(OBJECTS:.o=.d)
 
 # final targets
 BINARIES := $(EXAMPLE_BIN) \
-						$(DISASM_BIN) \
+            $(DISASM_BIN) \
             $(ASM_BIN)
 
 
-.PHONY: all clean
+.PHONY: all clean debug release
+
+
+release: all
+debug: all
 
 
 all: $(BINARIES)
@@ -49,14 +64,23 @@ obj/%.o: src/%.c
 
 $(EXAMPLE_BIN): $(EXAMPLE_OBJS)
 	$(LINK.c) -o $@ $^ $(EXAMPLE_LIBS)
-
+ifeq ($(DO_STRIP),1)
+	$(STRIP) $(SFLAGS) $@
+endif
 
 $(ASM_BIN): $(ASM_OBJS)
 	$(LINK.c) -o $@ $^ $(ASM_LIBS)
+ifeq ($(DO_STRIP),1)
+	$(STRIP) $(SFLAGS) $@
+endif
 
 
 $(DISASM_BIN): $(DISASM_OBJS)
 	$(LINK.c) -o $@ $^ $(DISASM_LIBS)
+ifeq ($(DO_STRIP),1)
+	$(STRIP) $(SFLAGS) $@
+endif
+
 
 -include obj/*.d
 

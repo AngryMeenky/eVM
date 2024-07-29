@@ -21,7 +21,7 @@ SFLAGS := --strip-unneeded
 
 
 EXAMPLE_BIN  := bin/evm-example
-EXAMPLE_OBJS := obj/evm.o obj/example.o
+EXAMPLE_OBJS := obj/evm.o obj/example.o obj/evm_disasm.o
 EXAMPLE_LIBS :=
 
 ASM_BIN  := bin/evm-asm

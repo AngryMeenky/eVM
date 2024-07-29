@@ -1,4 +1,5 @@
 #include "evm.h"
+#include "evm/disasm.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -25,7 +26,7 @@ int main(int argc, char **argv) {
           uint8_t  *prog;
           uint32_t  length;
           if(!slurp(input, &prog, &length, *argv, argv[arg])) {
-            if(evmSetProgram(&vm, prog, length)) {
+            if(!evmSetProgram(&vm, prog, length)) {
               do {
                 evmRun(&vm, 32768U);
               } while(!evmHasHalted(&vm));
@@ -113,13 +114,25 @@ static int32_t programChecksum(evm_t *vm) {
     sum = ((sum << 1) + vm->program[ip]) ^ ((sum >> 31) & 1);
   }
 
-  return sum;
+  evmPush(vm, sum);
+
+  return 0;
 }
 
 
 static int32_t programDump(evm_t *vm) {
-  (void) vm;
-  return 0;
+  evm_disassembler_t *disasm = evmdisInitialize(evmdisAllocate());
+  int32_t result = -1; // failure will result in program halting
+
+  if(evmdisFromBuffer(disasm, vm->program, vm->maxProgram) == vm->maxProgram) {
+    // success
+    evmdisToFile(disasm, stdout);
+    result = 0;
+  }
+
+  evmdisFree(evmdisFinalize(disasm));
+
+  return result;
 }
 
 

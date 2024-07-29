@@ -16,10 +16,10 @@
 
 evm_t *evmAllocate() {
   evm_t *retVal;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   retVal = (evm_t *) EVM_CALLOC(1, sizeof(evm_t));
   EVM_DEBUGF("eVM(%p)", retVal);
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return retVal;
 }
 
@@ -29,27 +29,30 @@ evm_t *evmInitialize(evm_t *vm, void *user, int32_t *stack, uint16_t stackSize);
 #else
 evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize) {
 #endif
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
-    (void) evmFinalize(vm);
+    vm->ip = 0;
+    vm->sp = 0;
+    vm->maxProgram = 0;
     vm->maxStack = stackSize;
 #if EVM_STATIC_STACK == 1
     vm->stack = stack;
 #else
     vm->stack = (int32_t *) EVM_CALLOC(stackSize, sizeof(int32_t));
 #endif
+    vm->program = NULL;
     vm->env = user;
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return vm;
 }
 
 
 void *evmFinalize(evm_t *vm) {
   void *retVal = NULL;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
 
   if(vm) {
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
@@ -65,21 +68,21 @@ void *evmFinalize(evm_t *vm) {
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return retVal;
 }
 
 
 void evmFree(evm_t *vm) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
   EVM_FREE((void *) vm);
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
 }
 
 
 int evmSetProgram(evm_t *vm, uint8_t *prog, uint32_t length) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm && prog && length < 0xFFFFFFFFU) {
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
 #if EVM_STATIC_PROGRAM == 1
@@ -94,28 +97,28 @@ int evmSetProgram(evm_t *vm, uint8_t *prog, uint32_t length) {
     vm->flags &= ~(EVM_HALTED | EVM_YIELD); // clear the halt and yield flags on success
 
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
-    EVM_TRACE("Exit " __FUNCTION__);
+    EVM_TRACEF("Exit %s", __FUNCTION__);
     return 0;
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return -1; // failure
 }
 
 
 int32_t evmUnboundHandler(evm_t *vm) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     EVM_WARNF("Called unbound builtin @ %08X", vm->ip - 2U);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return 0;
 }
 
 
 static int32_t evmIllegalState(evm_t *vm) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF(
@@ -132,62 +135,62 @@ static int32_t evmIllegalState(evm_t *vm) {
 
 
 static int32_t evmStackOverflow(evm_t *vm) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF("Stack overflow: sp(%04X) ip(%08X)", vm->sp, vm->ip);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return -1;
 }
 
 
 static int32_t evmStackUnderflow(evm_t *vm) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF("Stack underflow: sp(%04X) ip(%08X)", vm->sp, vm->ip);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return -1;
 }
 
 
 static int32_t evmIllegalInstruction(evm_t *vm) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF("Illegal instruction: %02X @ %08X", vm->program[vm->ip], vm->ip);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return -1;
 }
 
 
 int evmHasHalted(const evm_t *vm) {
   int result;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   result = vm ? (vm->flags & EVM_HALTED) == (uint32_t) EVM_HALTED : -1;
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
 
 
 int evmHasYielded(const evm_t *vm) {
   int result;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   result = vm ? (vm->flags & EVM_YIELD) == EVM_YIELD : -1;
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
 
 
 int evmPush(evm_t *vm, int32_t val) {
   int result = 0;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     if(vm->sp < vm->maxStack) {
       vm->stack[vm->sp++] = val;
@@ -197,7 +200,7 @@ int evmPush(evm_t *vm, int32_t val) {
     }
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
 
@@ -205,7 +208,7 @@ int evmPush(evm_t *vm, int32_t val) {
 #if EVM_FLOAT_SUPPORT == 1
 int evmPushf(evm_t *vm, float val) {
   int result = 0;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     if(vm->sp < vm->maxStack) {
       vm->stack[vm->sp++] = *(int32_t *) &val;
@@ -215,7 +218,7 @@ int evmPushf(evm_t *vm, float val) {
     }
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
 #endif
@@ -223,7 +226,7 @@ int evmPushf(evm_t *vm, float val) {
 
 int evmPop(evm_t *vm) {
   int result = 0;
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm) {
     if(vm->sp > 0) {
       vm->sp--;
@@ -233,7 +236,7 @@ int evmPop(evm_t *vm) {
     }
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
 
@@ -326,7 +329,7 @@ static int32_t evmLoadInt16(const uint8_t *src) {
 #if EVM_UNALIGNED_READS == 1
   return (int32_t) *(const int16_t *) src;
 #else
-  return (int32_t) (((int16_t) src[0]) | (((int16_t) src[1]) << 8));
+  return (((int32_t) src[0] << 16) | (((int32_t) src[1]) << 24)) >> 16;
 #endif
 }
 
@@ -348,7 +351,7 @@ static int32_t evmLoadInt32(const uint8_t *src) {
 
 
 int evmRun(evm_t *vm, uint32_t maxOps) {
-  EVM_TRACE("Enter " __FUNCTION__);
+  EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm && vm->program) {
     evm_t local = *vm; // copy the state back to a local eVM
     uint32_t ops = 0;
@@ -378,7 +381,7 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
 
         case OP_BCALL: {
           uint8_t id = local.program[local.ip + 1U];
-          EVM_TRACEF("%08X: LCALL %u", local.ip, id);
+          EVM_TRACEF("%08X: BCALL %u", local.ip, id);
 #if EVM_MAX_BUILTINS != 256
           if(id >= EVM_MAX_BUILTINS) {
             (void) evmIllegalInstruction(&local);
@@ -386,20 +389,23 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
           else {
 #endif
           local.ip += 2; // move to the next instruction, allow builtin to override on error
-          EVM_PUSH(local, (EVM_BUILTINS[id] ? EVM_BUILTINS[id] : &evmUnboundHandler)(&local)); 
+          if((EVM_BUILTINS[id] ? EVM_BUILTINS[id] : &evmUnboundHandler)(&local)) {
+            EVM_ERRORF("%08X: BAD BCALL(%02X)", local.ip - 2, local.program[local.ip - 1]);
+            local.flags |= EVM_HALTED;
+          }
 #if EVM_MAX_BUILTINS != 256
           }
 #endif
         } break;
 
         case OP_YIELD:
-          EVM_DEBUGF("YIELDING @ %08X", vm->ip);
+          EVM_DEBUGF("YIELDING @ %08X", local.ip);
           ++local.ip; // move to the next instruction
           local.flags |= EVM_YIELD;
         break;
 
         case OP_HALT:
-          EVM_INFOF("Halting @ %08X", vm->ip);
+          EVM_INFOF("HALTING @ %08X", local.ip);
           local.flags |= EVM_HALTED;
         break;
 
@@ -1238,11 +1244,11 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
     EVM_DEBUGF("Performed %u of %u VM operations", ops, maxOps);
 
     *vm = local; // copy the state back to the canonical eVM
-    EVM_TRACE("Exit " __FUNCTION__);
+    EVM_TRACEF("Exit %s", __FUNCTION__);
     return !!(local.flags & EVM_HALTED);
   }
 
-  EVM_TRACE("Exit " __FUNCTION__);
+  EVM_TRACEF("Exit %s", __FUNCTION__);
   return -1;
 }
 

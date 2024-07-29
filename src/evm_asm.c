@@ -1648,17 +1648,17 @@ static int evmOptionalSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) 
       }
       // modify the opcode based on the operand
       else if(m->op == OP_POP_1) {
-        i->binary[0] = m->op + (uint8_t) (first - 1);
+        i->binary[0] = m->op + (uint8_t) (first ? (first - 1) : 0);
         i->flags |= INST_FINALIZED;
       }
       else if(m->op == OP_REM_1) {
         if(second == 1 && first < 8) {
-          i->binary[0] = m->op + (uint8_t) (first - 1);
+          i->binary[0] = m->op + (uint8_t) (first ? (first - 1) : 0);
           i->flags |= INST_FINALIZED;
         }
         else {
           i->binary[0] = OP_REM_R;
-          i->binary[1] = (uint8_t) (((first - 1) << 4) | (second - 1));
+          i->binary[1] = (uint8_t) (((first - 1) << 4) | ((second - 1) & 0x0F));
           i->count++;
           i->flags |= INST_FINALIZED;
         }

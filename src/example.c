@@ -126,7 +126,9 @@ static int32_t programDump(evm_t *vm) {
 
   if(evmdisFromBuffer(disasm, vm->program, vm->maxProgram) == vm->maxProgram) {
     // success
+    printf("Program: %u\n", vm->maxProgram);
     evmdisToFile(disasm, stdout);
+    printf("\n");
     result = 0;
   }
 
@@ -142,6 +144,7 @@ static int32_t stackDump(evm_t *vm) {
   for(sp = vm->sp; sp-- > 0;) {
     printf("  %08X\n", vm->stack[sp]);
   }
+  printf("\n");
 
   return 0;
 }

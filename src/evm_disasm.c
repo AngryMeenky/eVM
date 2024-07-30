@@ -127,6 +127,42 @@ static void evmdisAddInstruction(evm_disassembler_t *evm, uint8_t *bin, uint32_t
     inst->offset = off;
     memcpy(&inst->arg.raw[0], &bin[off + 1], len - 1);
     inst->opcode = bin[off];
+
+    if(inst->targets) {
+      switch(inst->opcode) {
+        // one byte delta
+        case OP_JMP:
+        case OP_JLT:
+        case OP_JLE:
+        case OP_JNE:
+        case OP_JEQ:
+        case OP_JGE:
+        case OP_JGT:
+          evmdisAddTableEntry(evm, &bin[off + 1], 1);
+        break;
+
+        // two bytte delta
+        case OP_CALL:
+        case OP_LJMP:
+        case OP_LJLT:
+        case OP_LJLE:
+        case OP_LJNE:
+        case OP_LJEQ:
+        case OP_LJGE:
+        case OP_LJGT:
+          evmdisAddTableEntry(evm, &bin[off + 1], 2);
+        break;
+
+        // three byte delta
+        case OP_LCALL:
+          evmdisAddTableEntry(evm, &bin[off + 1], 3);
+        break;
+
+        default:
+          // nothing to do here
+        break;
+      }
+    }
   }
 }
 
@@ -485,6 +521,7 @@ int evmdisToFile(const evm_disassembler_t *evm, FILE *dst) {
   if(evm && dst) {
     evm_disasm_inst_t *inst;
 
+    fprintf(dst, ".name MAIN\n.offset 0\n\n");
     for(inst = evm->instructions.next; inst != &evm->instructions; inst = inst->next) {
       if(inst->label) {
         fprintf(dst, "\nLAB_%06X:\n", inst->offset);

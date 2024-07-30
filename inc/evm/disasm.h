@@ -35,7 +35,7 @@ typedef struct evm_disasm_inst_s {
 
 
 typedef struct evm_disasm_s {
-  evm_disasm_inst_t *instructions;
+  evm_disasm_inst_t instructions;
 } evm_disassembler_t;
 
 

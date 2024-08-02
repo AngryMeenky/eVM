@@ -4,6 +4,8 @@ CFLAGS := -MMD -Wall -Wextra -Werror -fno-strict-aliasing
 CPPFLAGS := -Iinc
 LDFLAGS :=
 
+SCONS_JOBS := 8
+
 
 ifneq ($(filter debug,$(MAKECMDGOALS)),)
   # debug specific flags/options
@@ -36,13 +38,14 @@ DISASM_LIBS :=
 OBJECTS := $(sort $(ASM_OBJS) $(DISASM_OBJS) $(EXAMPLE_OBJS))
 DEPS := $(OBJECTS:.o=.d)
 
+
 # final targets
 BINARIES := $(EXAMPLE_BIN) \
             $(DISASM_BIN) \
             $(ASM_BIN)
 
 
-.PHONY: all clean debug release
+.PHONY: all clean debug release gdextension-linux gdextension-macos gdextension-windows
 
 
 release: all
@@ -83,4 +86,16 @@ endif
 
 
 -include obj/*.d
+
+
+gdextension-linux-debug: godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a
+gdextension-linux-release: godot-cpp/bin/libgodot-cpp.linux.template_release.x86_64.a
+ 
+
+godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a:	godot-cpp/extension_api.json
+	cd godot-cpp && scons platform=linux custom_api_file=extension_api.json -j $(SCONS_JOBS)
+
+
+godot-cpp/extension_api.json:
+	cd godot-cpp && godot --dump-extension-api
 

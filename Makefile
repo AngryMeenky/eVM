@@ -92,8 +92,9 @@ gdextension-linux-debug: godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.
 gdextension-linux-release: godot-cpp/bin/libgodot-cpp.linux.template_release.x86_64.a
  
 
-godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a:	godot-cpp/extension_api.json
-	cd godot-cpp && scons platform=linux custom_api_file=extension_api.json -j $(SCONS_JOBS)
+godot-cpp/bin/libgodot-cpp.linux.%.x86_64.a:	godot-cpp/extension_api.json
+	cd godot-cpp && \
+	scons platform=linux target=$* custom_api_file=extension_api.json -j $(SCONS_JOBS)
 
 
 godot-cpp/extension_api.json:

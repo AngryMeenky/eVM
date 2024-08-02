@@ -245,7 +245,7 @@ int evmPop(evm_t *vm) {
   do { \
     if(((VM).sp + 1) < (VM).maxStack || !evmStackOverflow(&(VM))) { \
       typeof(VAL) _val = (VAL); \
-      (VM).stack[(VM).sp++] = *(typeof(*(VM).stack) *) &_val; \
+      (VM).stack[(VM).sp++] = *(typeof((VM).stack)) &_val; \
     } \
     else { \
       (void) evmIllegalState(&(VM));\
@@ -295,6 +295,7 @@ int evmPop(evm_t *vm) {
   do { \
     if(local.sp < 2U) { (void) evmStackUnderflow(&local); } \
     else { \
+      EVM_TRACEF("BINARY OP (%d " #OP " %d)", EVM_TOP_I(local), EVM_STACK_I(local, 1)); \
       EVM_STACK_I(local, 1) = EVM_TOP_I(local) OP EVM_STACK_I(local, 1); \
       --local.sp; \
     } \
@@ -305,6 +306,7 @@ int evmPop(evm_t *vm) {
   do { \
     if(local.sp < 2U) { (void) evmStackUnderflow(&local); } \
     else { \
+      EVM_TRACEF("BINARY OP (%f " #OP " %f)", EVM_TOP_F(local), EVM_STACK_F(local, 1)); \
       EVM_STACK_F(local, 1) = EVM_TOP_F(local) OP EVM_STACK_F(local, 1); \
       --local.sp; \
     } \
@@ -718,7 +720,7 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
         break;
 
         case OP_SUB_I:
-          EVM_TRACEF("%08X: SUB", local.ip);
+          EVM_TRACEF("%08X: SUBI", local.ip);
           ++local.ip; // move to the next instruction
           EVM_BIN_OP_I(local, -); // replace the top two values with their difference
         break;

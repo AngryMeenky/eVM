@@ -409,7 +409,7 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, uint8_t *buffer, uint32_t len
           int entries, idx;
 
           if(inst->opcode == OP_JTBL || inst->opcode == OP_LJTBL) {
-            entries = inst->arg.i8 + 1;
+            entries = (((uint32_t) inst->arg.i8) & 0xFF) + 1;
           }
           else {
             entries = 1;
@@ -466,8 +466,8 @@ static const char *OP_STRINGS[] = {
   "POP",     "POP 2",   "POP 3",   "POP 4",   "POP 5",   "POP 6",   "POP 7",   "POP 8",
   "REM 1",   "REM 2",   "REM 3",   "REM 4",   "REM 5",   "REM 6",   "REM 7",   "REM",
   // FAM_DUP
-  "DUP",     "DUP 1",   "DUP 2",   "DUP 3",   "DUP 4",   "DUP 5",   "DUP 6",   "DUP 7",
-  "DUP 8",   "DUP 9",   "DUP 10",  "DUP 11",  "DUP 12",  "DUP 13",  "DUP 14",  "DUP 15",
+  "DUP",     "DUP 2",   "DUP 3",   "DUP 4",   "DUP 5",   "DUP 6",   "DUP 7",   "DUP 8",
+  "DUP 9",   "DUP 10",  "DUP 11",  "DUP 12",  "DUP 13",  "DUP 14",  "DUP 15",  "DUP 16",
   // FAM_MATH
   "INC",     "DEC",     "ABS",     "NEG",     "ADD",     "SUB",     "MUL",     "DIV",
 #if EVM_FLOAT_SUPPORT == 1
@@ -638,16 +638,20 @@ int evmdisToFile(const evm_disassembler_t *evm, FILE *dst) {
         } break;
 
         // op + int8
-        case OP_BCALL:
         case OP_PUSH_8I:
-        case OP_RET_I:
           fprintf(dst, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i8);
+        break;
+
+        // op + uint8
+        case OP_BCALL:
+        case OP_RET_I:
+          fprintf(dst, "    %s %u\n", OP_STRINGS[inst->opcode], ((uint32_t) inst->arg.i8) & 0xFF);
         break;
 
         // op + 2 nybbles
         case OP_REM_R:
-          fprintf(dst, "    %s %d %d\n",
-                  OP_STRINGS[inst->opcode], (inst->arg.i8 >> 4) & 0x0F, inst->arg.i8 & 0x0F);
+          fprintf(dst, "    %s %d %d\n", OP_STRINGS[inst->opcode],
+                  ((inst->arg.i8 >> 4) & 0x0F) + 1, (inst->arg.i8 & 0x0F) + 1);
         break;
 
         // op + label

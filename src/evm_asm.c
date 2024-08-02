@@ -1,7 +1,9 @@
 #include "evm/asm.h"
 #include "evm/opcodes.h"
 
+#include <math.h>
 #include <ctype.h>
+#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -243,8 +245,8 @@ static const evm_mnemonic_t MNEMONICS[] = {
   { "SWAP",  ARG_NONE,  OP_SWAP,    &evmSimpleSerializer   },
   { "POP",   ARG_O3,    OP_POP_1,   &evmOptionalSerializer }, // OP_POP_{1,2,3,4,5,6,7,8}
   { "REM",   ARG_I4_O4, OP_REM_1,   &evmOptionalSerializer }, // OP_REM_{1,2,3,4,5,6,7,R}
-  // OP_DUP_{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
-  { "DUP",   ARG_O4,    OP_DUP_1,   &evmOptionalSerializer },
+  // OP_DUP_{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  { "DUP",   ARG_O4,    OP_DUP_0,   &evmOptionalSerializer },
   { "INC",   ARG_NONE,  OP_INC_I,   &evmSimpleSerializer   },
   { "DEC",   ARG_NONE,  OP_DEC_I,   &evmSimpleSerializer   },
   { "ABS",   ARG_NONE,  OP_ABS_I,   &evmSimpleSerializer   },
@@ -277,7 +279,7 @@ static const evm_mnemonic_t MNEMONICS[] = {
   { "LJEQ",  ARG_LBL,   OP_JEQ,     &evmLabelSerializer    },
   { "LJGE",  ARG_LBL,   OP_JGE,     &evmLabelSerializer    },
   { "LJGT",  ARG_LBL,   OP_JGT,     &evmLabelSerializer    },
-  { "LJTBL", ARG_NONE,  OP_JTBL,    &evmSimpleSerializer   },
+  { "LJTBL", ARG_NONE,  OP_LJTBL,   &evmSimpleSerializer   },
   // OP_RET{,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_I}
   { "RET",   ARG_O8,    OP_RET,     &evmOptionalSerializer },
 #if EVM_FLOAT_SUPPORT == 1
@@ -439,6 +441,14 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
             // add the jump table entry to the current table
             if(sect) {
               evmasmAddToSection(sect, inst);
+
+              if(!sect->tail->size) {
+                EVM_ERRORF(
+                  "Headerless jump table entry in %s on line %d: %s",
+                  inst->file, inst->line, &inst->text[0]
+                );
+                result |= 4096;
+              }
             }
             else {
               EVM_ERRORF(
@@ -602,7 +612,7 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
           evm_instruction_ref_t *ref;
           evm_label_t *target;
           enum { INVALID, SHORT, LONG } mode = INVALID;
-          int delta;
+          int delta, branches = 0, entries = 0, tbl_off = 0;
 
           for(ref = sect->instructions; ref; ref = ref->next) {
             inst = ref->instruction;
@@ -618,10 +628,11 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
                   switch(mode) {
                     case SHORT:
                       target = ref->target;
-                      delta = (target->section->base + target->offset) -
-                              (sect->base + ref->offset);
+                      delta = (target->section->base + target->offset) - tbl_off;
 
                       if(-128 <= delta && delta <= 127) {
+                        ++entries;
+                        sect->contents[branches]++;
                         sect->contents[sect->length++] = (int8_t) delta;
                       }
                       else {
@@ -636,10 +647,11 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
 
                     case LONG:
                       target = ref->target;
-                      delta = (target->section->base + target->offset) -
-                              (sect->base + ref->offset);
+                      delta = (target->section->base + target->offset) - tbl_off;
 
                       if(-32768 <= delta && delta <= 32767) {
+                        ++entries;
+                        sect->contents[branches]++;
                         sect->contents[sect->length++] =  delta       & 0xFF;
                         sect->contents[sect->length++] = (delta >> 8) & 0xFF;
                       }
@@ -672,6 +684,13 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
             else { // handle normal instructions
               switch(inst->binary[0]) {
                 default:
+                  if(mode != INVALID && !entries) {
+                    EVM_ERRORF(
+                      "Empty jump table detected in %s on line %d: %s",
+                      inst->file, inst->line, &inst->text[0]
+                    );
+                    result |= 2048;
+                  }
                   mode = INVALID;
                   memcpy(&sect->contents[sect->length], &inst->binary[0], inst->count);
                   sect->length += inst->count;
@@ -705,8 +724,11 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
 
                 // short jump table
                 case OP_JTBL:
-                  mode = SHORT;
                   sect->contents[sect->length++] = inst->binary[0];
+                  sect->contents[branches = sect->length++] = -1;
+                  tbl_off = sect->base + ref->offset;
+                  entries = 0;
+                  mode = SHORT;
                 break;
 
                 // long jumps
@@ -739,8 +761,11 @@ int evmasmValidateProgram(evm_assembler_t *evm) {
 
                 // long jump table
                 case OP_LJTBL:
-                  mode = SHORT;
                   sect->contents[sect->length++] = inst->binary[0];
+                  sect->contents[branches = sect->length++] = -1;
+                  tbl_off = sect->base + ref->offset;
+                  entries = 0;
+                  mode = LONG;
                 break;
 
                 // extremely long jump
@@ -1109,7 +1134,7 @@ static void evmasmAddToSection(evm_section_t *section, evm_instruction_t *inst) 
             // jump tables
             case OP_JTBL:
             case OP_LJTBL:
-              ref->size = 1; // actual size depends on table size
+              ref->size = 2; // doesn't include jump table entries
             break;
 
             // long jumps
@@ -1139,7 +1164,22 @@ static void evmasmAddToSection(evm_section_t *section, evm_instruction_t *inst) 
         ref->size = inst->count - 1;
       }
       else if(inst->binary[0] == DIR_TBL) {
-        ref->size = 2; // assume long jump
+        // search back for jump table instruction
+        evm_instruction_t *i = inst->prev, *head = section->instructions->instruction->prev;
+        ref->size = 0; // invalid size until resolved
+
+        while(i != head) {
+          if(i->binary[0] == OP_JTBL) {
+            ref->size = 1; // short jumps only
+            break;
+          }
+          else if(i->binary[0] == OP_LJTBL) {
+            ref->size = 2; // long jumps
+            break;
+          }
+
+          i = i->prev;
+        }
       }
       else {
         // most directives and invalid instructions don't get added to the binary
@@ -1594,6 +1634,35 @@ static int evmCompareSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
       i->flags |= INST_FINALIZED;
     }
   }
+#if EVM_FLOAT_SUPPORT == 1
+  else if(m->arg == ARG_OF32) {
+    float operand;
+
+    if(sscanf(&i->text[0], "%*s %f", &operand) == 1) {
+      if(fabsf(operand + 1.0f) < FLT_EPSILON) {
+        i->binary[0] = m->op + 2; // cmpf -1.0
+        i->flags |= INST_FINALIZED;
+      }
+      else if(fabsf(operand - 1.0f) < FLT_EPSILON) {
+        i->binary[0] = m->op + 1; // cmpf 1.0
+        i->flags |= INST_FINALIZED;
+      }
+      else if(fabsf(operand) < FLT_EPSILON) {
+        i->binary[0] = m->op; // cmpf 0.0
+        i->flags |= INST_FINALIZED;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand invalid for %s: %f is not in (-1.0, 0.0, 1.0)", &m->tag[0], operand);
+      }
+    }
+    else {
+      i->binary[0] = m->op + 3;
+      i->flags |= INST_FINALIZED;
+    }
+  }
+#endif
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }
@@ -1626,10 +1695,10 @@ static int evmOptionalSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) 
         EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 1)", &m->tag[0], first);
       }
 #endif
-      else if(m->arg == ARG_O4 && count >= 1 && (first < 0 || 15 < first)) {
+      else if(m->arg == ARG_O4 && count >= 1 && (first < 1 || 16 < first)) {
         result = -1;
         i->flags |= INST_INVALID_ARG;
-        EVM_ERRORF("Operand out of bounds for %s (0 <= %d <= 15)", &m->tag[0], first);
+        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 16)", &m->tag[0], first);
       }
       else if(m->arg == ARG_I4_O4 && (first < 1 || 16 < first)) {
         result = -1;
@@ -1663,8 +1732,8 @@ static int evmOptionalSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) 
           i->flags |= INST_FINALIZED;
         }
       }
-      else if(m->op == OP_DUP_1) {
-        i->binary[0] = m->op + (uint8_t) first;
+      else if(m->op == OP_DUP_0) {
+        i->binary[0] = m->op + (uint8_t) (first ? (first - 1) : 0);
         i->flags |= INST_FINALIZED;
       }
       else if(m->op == OP_RET) {

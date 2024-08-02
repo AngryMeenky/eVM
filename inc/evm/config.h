@@ -42,6 +42,13 @@
 
 // What level of logging to support?
 // valid values: [0,6]
+// 0: don't print even on fatal errors
+// 1: only print fatal errors
+// 2: print all errors
+// 3: print warnings and errors
+// 4: print information, warning, and error messages
+// 5: print debug, information, warning, and error messages
+// 6: print trace, debug, information, warning, and error messages
 #ifndef EVM_LOG_LEVEL
 #  define EVM_LOG_LEVEL (4)
 #endif

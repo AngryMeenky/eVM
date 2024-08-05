@@ -31,6 +31,8 @@ typedef struct evm_disasm_inst_s {
   }                         arg;
   uint8_t                   opcode;
   int8_t                    label;
+  int16_t                   length;
+  char                     *text;
 } evm_disasm_inst_t;
 
 

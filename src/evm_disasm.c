@@ -515,187 +515,356 @@ static const char *OP_STRINGS[] = {
 };
 
 
+static int evmdisStringifyInstructions(const evm_disassembler_t *evm) {
+  int result = -1;
+
+  if(evm) {
+    evm_disasm_inst_t *inst;
+    result = 0;
+
+    // don't do anything if it has already been stringified
+    if(!evm->instructions.next->text) {
+      for(inst = evm->instructions.next; inst != &evm->instructions; inst = inst->next) {
+        int len = inst->label ? snprintf(NULL, 0U, "\nLAB_%06X:\n", inst->offset): 0;
+
+        switch(inst->opcode) {
+          // just the opcode
+          case OP_NOP:
+          case OP_YIELD:
+          case OP_HALT:
+          case OP_PUSH_I0:
+          case OP_PUSH_I1:
+          case OP_PUSH_IN1:
+          case OP_SWAP:
+          case OP_POP_1:
+          case OP_POP_2:
+          case OP_POP_3:
+          case OP_POP_4:
+          case OP_POP_5:
+          case OP_POP_6:
+          case OP_POP_7:
+          case OP_POP_8:
+          case OP_REM_1:
+          case OP_REM_2:
+          case OP_REM_3:
+          case OP_REM_4:
+          case OP_REM_5:
+          case OP_REM_6:
+          case OP_REM_7:
+          case OP_DUP_0:
+          case OP_DUP_1:
+          case OP_DUP_2:
+          case OP_DUP_3:
+          case OP_DUP_4:
+          case OP_DUP_5:
+          case OP_DUP_6:
+          case OP_DUP_7:
+          case OP_DUP_8:
+          case OP_DUP_9:
+          case OP_DUP_10:
+          case OP_DUP_11:
+          case OP_DUP_12:
+          case OP_DUP_13:
+          case OP_DUP_14:
+          case OP_DUP_15:
+          case OP_INC_I:
+          case OP_DEC_I:
+          case OP_ABS_I:
+          case OP_NEG_I:
+          case OP_ADD_I:
+          case OP_SUB_I:
+          case OP_MUL_I:
+          case OP_DIV_I:
+          case OP_LSH:
+          case OP_RSH:
+          case OP_AND:
+          case OP_OR:
+          case OP_XOR:
+          case OP_INV:
+          case OP_BOOL:
+          case OP_NOT:
+          case OP_CMP_I0:
+          case OP_CMP_I1:
+          case OP_CMP_IN1:
+          case OP_CMP_I:
+          case OP_RET:
+          case OP_RET_1:
+          case OP_RET_2:
+          case OP_RET_3:
+          case OP_RET_4:
+          case OP_RET_5:
+          case OP_RET_6:
+          case OP_RET_7:
+          case OP_RET_8:
+          case OP_RET_9:
+          case OP_RET_10:
+          case OP_RET_11:
+          case OP_RET_12:
+          case OP_RET_13:
+          case OP_RET_14:
+#if EVM_FLOAT_SUPPORT == 1
+          case OP_PUSH_F0:
+          case OP_PUSH_F1:
+          case OP_PUSH_FN1:
+          case OP_INC_F:
+          case OP_DEC_F:
+          case OP_ABS_F:
+          case OP_NEG_F:
+          case OP_ADD_F:
+          case OP_SUB_F:
+          case OP_MUL_F:
+          case OP_DIV_F:
+          case OP_CONV_FI:
+          case OP_CONV_FI_1:
+          case OP_CONV_IF:
+          case OP_CONV_IF_1:
+          case OP_CMP_F0:
+          case OP_CMP_F1:
+          case OP_CMP_FN1:
+          case OP_CMP_F:
+#endif
+            len += snprintf(NULL, 0U, "    %s\n", OP_STRINGS[inst->opcode]);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s\n",
+                       inst->offset, OP_STRINGS[inst->opcode]);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s\n", OP_STRINGS[inst->opcode]);
+            }
+          break;
+
+          case OP_JTBL:
+          case OP_LJTBL: {
+            int entries = inst->arg.i8 + 1, idx;
+
+            len += snprintf(NULL, 0U, "    %s\n", OP_STRINGS[inst->opcode]);
+            // determine the jump table length
+            for(idx = 0; idx < entries; ++idx) {
+              len += snprintf(NULL, 0U, ".addr LAB_%06X\n", inst->targets[idx]);
+            }
+
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            len = inst->label ? snprintf(inst->text, len, "\nLAB_%06X:\n", inst->offset) : 0;
+
+            len += snprintf(&inst->text[len], inst->length - len + 1,
+                            "    %s\n", OP_STRINGS[inst->opcode]);
+            // print the jump table
+            for(idx = 0; idx < entries; ++idx) {
+              len += snprintf(&inst->text[len], inst->length - len + 1,
+                              ".addr LAB_%06X\n", inst->targets[idx]);
+            }
+          } break;
+
+          // op + int8
+          case OP_PUSH_8I:
+            len += snprintf(NULL, 0U, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i8);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s %d\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->arg.i8);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i8);
+            }
+          break;
+
+          // op + uint8
+          case OP_BCALL:
+          case OP_RET_I:
+            len += snprintf(NULL, 0U, "    %s %u\n", OP_STRINGS[inst->opcode], inst->arg.i32 & 0xFF);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s %u\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->arg.i32 & 0xFF);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s %u\n",
+                       OP_STRINGS[inst->opcode], inst->arg.i32 & 0xFF);
+            }
+          break;
+
+          // op + 2 nybbles
+          case OP_REM_R:
+            len += snprintf(NULL, 0U, "    %s %d %d\n", OP_STRINGS[inst->opcode],
+                            ((inst->arg.i8 >> 4) & 0x0F) + 1, (inst->arg.i8 & 0x0F) + 1);
+            inst->text = malloc(len + 1);
+            inst->length = len; // don't count the NUL terminator
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s %d %d\n",
+                       inst->offset, OP_STRINGS[inst->opcode],
+                       ((inst->arg.i8 >> 4) & 0x0F) + 1, (inst->arg.i8 & 0x0F) + 1);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s %d %d\n", OP_STRINGS[inst->opcode],
+                       ((inst->arg.i8 >> 4) & 0x0F) + 1, (inst->arg.i8 & 0x0F) + 1);
+            }
+          break;
+
+          // op + label
+          case OP_JMP:
+          case OP_JLT:
+          case OP_JLE:
+          case OP_JNE:
+          case OP_JEQ:
+          case OP_JGE:
+          case OP_JGT:
+          case OP_CALL:
+          case OP_LJMP:
+          case OP_LJLT:
+          case OP_LJLE:
+          case OP_LJNE:
+          case OP_LJEQ:
+          case OP_LJGE:
+          case OP_LJGT:
+          case OP_LCALL:
+            len += snprintf(NULL, 0U, "    %s LAB_%06X\n",
+                            OP_STRINGS[inst->opcode], inst->targets[0]);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s LAB_%06X\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->targets[0]);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s LAB_%06X\n",
+                       OP_STRINGS[inst->opcode], inst->targets[0]);
+            }
+          break;
+
+          // op + int16
+          case OP_PUSH_16I:
+            len += snprintf(NULL, 0U, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i16);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s %d\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->arg.i16);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i16);
+            }
+          break;
+
+          // op + int24/int32
+          case OP_PUSH_24I:
+          case OP_PUSH_32I:
+            len += snprintf(NULL, 0U, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i32);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s %d\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->arg.i32);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i32);
+            }
+          break;
+
+#if EVM_FLOAT_SUPPORT == 1
+          // op + float
+          case OP_PUSH_F:
+            len += snprintf(NULL, 0U, "    %s %f\n", OP_STRINGS[inst->opcode], inst->arg.f32);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s %f\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->arg.f32);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s %f\n", OP_STRINGS[inst->opcode], inst->arg.f32);
+            }
+          break;
+#endif
+
+          default:
+            len += snprintf(NULL, 0U, "    %s\n", OP_STRINGS[inst->opcode]);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s\n",
+                       inst->offset, OP_STRINGS[inst->opcode]);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s\n", OP_STRINGS[inst->opcode]);
+            }
+          break;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+
+int evmdisToBuffer(const evm_disassembler_t *evm, char **buf, int *len) {
+  int result = -1;
+
+  if(len) {
+    result = evmdisStringifyInstructions(evm);
+
+    if(!result) {
+      int length = snprintf(NULL, 0U, ".name MAIN\n.offset 0\n\n") - 1;
+      evm_disasm_inst_t *inst;
+
+      for(inst = evm->instructions.next; inst != &evm->instructions; inst = inst->next) {
+        length += inst->length;
+      }
+
+      *len = length; // don't report the NUL terminator as part of the buffer
+
+      if(buf) {
+        if((*buf = malloc(length + 1))) { // include a NUL terminator
+          char *ptr = *buf;
+          int count = snprintf(ptr, length, ".name MAIN\n.offset 0\n\n");
+          ptr += count;
+
+          for(inst = evm->instructions.next; inst != &evm->instructions; inst = inst->next) {
+            strcpy(ptr, inst->text);
+            length -= inst->length;
+            ptr += inst->length;
+          }
+        }
+        else {
+          result = -1;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+
 int evmdisToFile(const evm_disassembler_t *evm, FILE *dst) {
   int result = -1;
 
   if(evm && dst) {
-    evm_disasm_inst_t *inst;
+    char *buffer = NULL;
+    int length = 0;
 
-    fprintf(dst, ".name MAIN\n.offset 0\n\n");
-    for(inst = evm->instructions.next; inst != &evm->instructions; inst = inst->next) {
-      if(inst->label) {
-        fprintf(dst, "\nLAB_%06X:\n", inst->offset);
-      }
+    if(!(result = evmdisToBuffer(evm, &buffer, &length)) && length > 0) {
+      fprintf(dst, "%s", buffer);
+      result = 0;
+    }
 
-      switch(inst->opcode) {
-        // just the opcode
-        case OP_NOP:
-        case OP_YIELD:
-        case OP_HALT:
-        case OP_PUSH_I0:
-        case OP_PUSH_I1:
-        case OP_PUSH_IN1:
-        case OP_SWAP:
-        case OP_POP_1:
-        case OP_POP_2:
-        case OP_POP_3:
-        case OP_POP_4:
-        case OP_POP_5:
-        case OP_POP_6:
-        case OP_POP_7:
-        case OP_POP_8:
-        case OP_REM_1:
-        case OP_REM_2:
-        case OP_REM_3:
-        case OP_REM_4:
-        case OP_REM_5:
-        case OP_REM_6:
-        case OP_REM_7:
-        case OP_DUP_0:
-        case OP_DUP_1:
-        case OP_DUP_2:
-        case OP_DUP_3:
-        case OP_DUP_4:
-        case OP_DUP_5:
-        case OP_DUP_6:
-        case OP_DUP_7:
-        case OP_DUP_8:
-        case OP_DUP_9:
-        case OP_DUP_10:
-        case OP_DUP_11:
-        case OP_DUP_12:
-        case OP_DUP_13:
-        case OP_DUP_14:
-        case OP_DUP_15:
-        case OP_INC_I:
-        case OP_DEC_I:
-        case OP_ABS_I:
-        case OP_NEG_I:
-        case OP_ADD_I:
-        case OP_SUB_I:
-        case OP_MUL_I:
-        case OP_DIV_I:
-        case OP_LSH:
-        case OP_RSH:
-        case OP_AND:
-        case OP_OR:
-        case OP_XOR:
-        case OP_INV:
-        case OP_BOOL:
-        case OP_NOT:
-        case OP_CMP_I0:
-        case OP_CMP_I1:
-        case OP_CMP_IN1:
-        case OP_CMP_I:
-        case OP_RET:
-        case OP_RET_1:
-        case OP_RET_2:
-        case OP_RET_3:
-        case OP_RET_4:
-        case OP_RET_5:
-        case OP_RET_6:
-        case OP_RET_7:
-        case OP_RET_8:
-        case OP_RET_9:
-        case OP_RET_10:
-        case OP_RET_11:
-        case OP_RET_12:
-        case OP_RET_13:
-        case OP_RET_14:
-#if EVM_FLOAT_SUPPORT == 1
-        case OP_PUSH_F0:
-        case OP_PUSH_F1:
-        case OP_PUSH_FN1:
-        case OP_INC_F:
-        case OP_DEC_F:
-        case OP_ABS_F:
-        case OP_NEG_F:
-        case OP_ADD_F:
-        case OP_SUB_F:
-        case OP_MUL_F:
-        case OP_DIV_F:
-        case OP_CONV_FI:
-        case OP_CONV_FI_1:
-        case OP_CONV_IF:
-        case OP_CONV_IF_1:
-        case OP_CMP_F0:
-        case OP_CMP_F1:
-        case OP_CMP_FN1:
-        case OP_CMP_F:
-#endif
-          fprintf(dst, "    %s\n", OP_STRINGS[inst->opcode]);
-        break;
-
-        case OP_JTBL:
-        case OP_LJTBL: {
-          int entries = inst->arg.i8 + 1, idx;
-
-          fprintf(dst, "    %s\n", OP_STRINGS[inst->opcode]);
-          // print the jump table
-          for(idx = 0; idx < entries; ++idx) {
-            fprintf(dst, ".addr LAB_%06X\n", inst->targets[idx]);
-          }
-        } break;
-
-        // op + int8
-        case OP_PUSH_8I:
-          fprintf(dst, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i8);
-        break;
-
-        // op + uint8
-        case OP_BCALL:
-        case OP_RET_I:
-          fprintf(dst, "    %s %u\n", OP_STRINGS[inst->opcode], ((uint32_t) inst->arg.i8) & 0xFF);
-        break;
-
-        // op + 2 nybbles
-        case OP_REM_R:
-          fprintf(dst, "    %s %d %d\n", OP_STRINGS[inst->opcode],
-                  ((inst->arg.i8 >> 4) & 0x0F) + 1, (inst->arg.i8 & 0x0F) + 1);
-        break;
-
-        // op + label
-        case OP_JMP:
-        case OP_JLT:
-        case OP_JLE:
-        case OP_JNE:
-        case OP_JEQ:
-        case OP_JGE:
-        case OP_JGT:
-        case OP_CALL:
-        case OP_LJMP:
-        case OP_LJLT:
-        case OP_LJLE:
-        case OP_LJNE:
-        case OP_LJEQ:
-        case OP_LJGE:
-        case OP_LJGT:
-        case OP_LCALL:
-          fprintf(dst, "    %s LAB_%06X\n", OP_STRINGS[inst->opcode], inst->targets[0]);
-        break;
-
-        // op + int16
-        case OP_PUSH_16I:
-          fprintf(dst, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i16);
-        break;
-
-        // op + int24/int32
-        case OP_PUSH_24I:
-        case OP_PUSH_32I:
-          fprintf(dst, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i32);
-        break;
-
-#if EVM_FLOAT_SUPPORT == 1
-        // op + float
-        case OP_PUSH_F:
-          fprintf(dst, "    %s %f\n", OP_STRINGS[inst->opcode], inst->arg.f32);
-        break;
-#endif
-
-        default:
-          fprintf(dst, "    %s\n", OP_STRINGS[inst->opcode]);
-        break;
-      }
+    if(buffer) {
+      free(buffer);
     }
   }
 

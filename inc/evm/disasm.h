@@ -44,9 +44,10 @@ EVM_API evm_disassembler_t *evmdisInitialize(evm_disassembler_t *);
 EVM_API evm_disassembler_t *evmdisFinalize(evm_disassembler_t *);
 EVM_API void                evmdisFree(evm_disassembler_t *);
 
-EVM_API uint32_t evmdisFromBuffer(evm_disassembler_t *, uint8_t *, uint32_t);
+EVM_API uint32_t evmdisFromBuffer(evm_disassembler_t *, const uint8_t *, uint32_t);
 EVM_API int      evmdisFromFile(evm_disassembler_t *, FILE *);
 
+EVM_API int      evmdisToBuffer(const evm_disassembler_t *, char **, int *);
 EVM_API int      evmdisToFile(const evm_disassembler_t *, FILE *);
 
 

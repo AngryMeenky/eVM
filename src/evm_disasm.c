@@ -41,7 +41,7 @@ void evmdisFree(evm_disassembler_t *evm) {
 }
 
 
-static void evmdisAddTableEntry(evm_disassembler_t *evm, uint8_t *bin, int length) {
+static void evmdisAddTableEntry(evm_disassembler_t *evm, const uint8_t *bin, int length) {
   evm_disasm_inst_t *inst = evm->instructions.prev;
   int32_t *ptr = NULL;
 
@@ -79,7 +79,7 @@ static void evmdisAddTableEntry(evm_disassembler_t *evm, uint8_t *bin, int lengt
 
 #define SIZE_FOR(_cnt) (((sizeof(evm_disasm_inst_t) + 7) & ~7) + (sizeof(uint32_t) * _cnt))
 
-static void evmdisAddInstruction(evm_disassembler_t *evm, uint8_t *bin, uint32_t off, int len) {
+static void evmdisAddInstruction(evm_disassembler_t *evm, const uint8_t *bin, uint32_t off, int len) {
   evm_disasm_inst_t *inst;
 
   switch(bin[off]) {
@@ -193,7 +193,7 @@ static int evmdisResolve(evm_disassembler_t *evm, evm_disasm_inst_t *inst, int e
 }
 
 
-uint32_t evmdisFromBuffer(evm_disassembler_t *evm, uint8_t *buffer, uint32_t length) {
+uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32_t length) {
   uint32_t consumed = 0;
   int ok = -1;
 

@@ -13,14 +13,14 @@ extern "C" {
 
 // the state of the virtual machine
 typedef struct evm_s {
-  uint32_t  ip;
-  uint16_t  sp;
-  uint16_t  maxStack;
-  uint32_t  maxProgram;
-  uint32_t  flags;
-  int32_t  *stack;
-  uint8_t  *program;
-  void     *env;
+  uint32_t       ip;
+  uint16_t       sp;
+  uint16_t       maxStack;
+  uint32_t       maxProgram;
+  uint32_t       flags;
+  int32_t       *stack;
+  const uint8_t *program;
+  void          *env;
 } evm_t;
 
 
@@ -49,12 +49,12 @@ EVM_API evm_t *evmInitialize(evm_t *vm, void *user, int32_t *stack, uint16_t sta
 #else
 EVM_API evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize);
 #endif
-EVM_API void  *evmFinalize(evm_t *vm);
+EVM_API evm_t *evmFinalize(evm_t *vm);
 EVM_API void   evmFree(evm_t *vm);
 
 
 // set the program for the virtual machine instance
-EVM_API int evmSetProgram(evm_t *vm, uint8_t *prog, uint32_t length);
+EVM_API int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length);
 
 // execute the virtual machine for the given number of operations
 EVM_API int evmRun(evm_t *vm, uint32_t maxOps);
@@ -69,7 +69,8 @@ EVM_API int evmHasYielded(const evm_t *);
 #define evmStackValue(EVM_PTR, IDX) ((EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
 #define evmStackTop(EVM_PTR)        evmStackValue(EVM_PTR, 0U)
 #if EVM_FLOAT_SUPPORT == 1
-#  define evmStackTopf(EVM_PTR)     (*(float *) &evmStackValue(EVM_PTR, 0U))
+#  define evmStackTopf(EVM_PTR)     evmStackValuef(EVM_PTR, 0U)
+#  define evmStackValuef(EVM_PTR, IDX) (*(float *) &(EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
 #endif
 
 #define evmProgramSize(EVM_PTR) ((EVM_PTR)->maxProgram)

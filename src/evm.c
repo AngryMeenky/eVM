@@ -50,8 +50,8 @@ evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize) {
 }
 
 
-void *evmFinalize(evm_t *vm) {
-  void *retVal = NULL;
+evm_t *evmFinalize(evm_t *vm) {
+  evm_t *retVal = NULL;
   EVM_TRACEF("Enter %s", __FUNCTION__);
 
   if(vm) {
@@ -81,7 +81,7 @@ void evmFree(evm_t *vm) {
 }
 
 
-int evmSetProgram(evm_t *vm, uint8_t *prog, uint32_t length) {
+int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
   EVM_TRACEF("Enter %s", __FUNCTION__);
   if(vm && prog && length < 0xFFFFFFFFU) {
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
@@ -91,7 +91,7 @@ int evmSetProgram(evm_t *vm, uint8_t *prog, uint32_t length) {
     if(vm->program) { EVM_FREE((void *) vm->program); }
     vm->program = EVM_MALLOC(length + 1U);
     memcpy((void *) vm->program, prog, length);
-    vm->program[length] = OP_HALT; // halt terminate the program
+    ((uint8_t *) vm->program)[length] = OP_HALT; // halt terminate the program
 #endif
     vm->maxProgram = length;
     vm->flags &= ~(EVM_HALTED | EVM_YIELD); // clear the halt and yield flags on success

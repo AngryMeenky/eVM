@@ -26,8 +26,8 @@ public:
   bool fromFile(FileAccess *);
   bool fromBuffer(const PackedByteArray &);
 
-  PackedStringArray toBuffer();
-  bool              toFile(FileAccess *);
+  PackedByteArray toBuffer();
+  bool            toFile(FileAccess *);
 
 
 protected:

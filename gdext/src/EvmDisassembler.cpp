@@ -1,5 +1,7 @@
 #include "EvmDisassembler.h"
 
+#include <stdlib.h>
+
 
 using namespace godot;
 
@@ -29,17 +31,30 @@ bool EvmDisassembler::fromFile(FileAccess *fa) {
 
 
 bool EvmDisassembler::fromBuffer(const PackedByteArray &arr) {
-  return false;
+  return evmdisFromBuffer(evm, arr.ptr(), (uint32_t) arr.size()) == (uint32_t) arr.size();
 }
 
 
-PackedStringArray EvmDisassembler::toBuffer() {
-  return PackedStringArray();
+PackedByteArray EvmDisassembler::toBuffer() {
+  PackedByteArray result;
+  char *buffer = nullptr;
+  int length = 0;
+
+  if(!evmdisToBuffer(evm, &buffer, &length)) {
+    result.resize(length);
+    memcpy(result.ptrw(), buffer, length);
+  }
+
+  if(buffer) {
+    ::free(buffer);
+  }
+  
+  return result;
 }
 
 
 bool EvmDisassembler::toFile(FileAccess *fa) {
-  PackedByteArray arr = toBuffer().to_byte_array();
+  PackedByteArray arr = toBuffer();
 
   if(arr.size() > 0) {
     fa->store_buffer(arr);

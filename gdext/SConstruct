@@ -17,6 +17,10 @@ env.Append(CPPDEFINES=["GDEXTENSION"])
 # tweak this if you want to use different folders, or more folders, to store your source code in.
 env.Append(CPPPATH=["inc/", "../inc"])
 sources = Glob("src/*.cpp")
+sources.append("../src/evm.c")
+sources.append("../src/evm_asm.c")
+sources.append("../src/opcodes.c")
+sources.append("../src/evm_disasm.c")
 
 if env["platform"] == "macos":
     library = env.SharedLibrary(

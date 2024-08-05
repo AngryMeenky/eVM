@@ -88,15 +88,14 @@ endif
 -include obj/*.d
 
 
-gdextension-linux-debug: godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a
-gdextension-linux-release: godot-cpp/bin/libgodot-cpp.linux.template_release.x86_64.a
- 
-
-godot-cpp/bin/libgodot-cpp.linux.%.x86_64.a:	godot-cpp/extension_api.json
-	cd godot-cpp && \
-	scons platform=linux target=$* custom_api_file=extension_api.json -j $(SCONS_JOBS)
+gdextension-linux-debug: gdext/extension_api.json
+	cd gdext && scons platform=linux target=template_debug custom_api_file=extension_api.json -j $(SCONS_JOBS)
 
 
-godot-cpp/extension_api.json:
-	cd godot-cpp && godot --dump-extension-api
+gdextension-linux-release: gdext/extension_api.json
+	cd gdext && scons platform=linux target=template_release custom_api_file=extension_api.json -j $(SCONS_JOBS)
+
+
+gdext/extension_api.json:
+	cd gdext && godot --dump-extension-api
 

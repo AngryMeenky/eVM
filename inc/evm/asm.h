@@ -30,12 +30,12 @@ typedef struct evm_program_s evm_program_t;
 
 
 typedef struct evm_asm_s {
-  evm_instruction_t  head;
   evm_program_t     *output;
   uint32_t           flags;
   uint32_t           length;
   uint32_t           count;
   uint32_t           sequence;
+  evm_instruction_t  head;
 } evm_assembler_t;
 
 

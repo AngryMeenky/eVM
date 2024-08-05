@@ -7,6 +7,8 @@
 #define EVM_MAX_BUILTINS (256)
 // allow extenal allocation of the stack
 #define EVM_STATIC_STACK (1)
+// only print internal eVM errors
+#define EVM_LOG_LEVEL (2)
 
 #endif /* GDEXT_EVM_CONFIG_H */
 

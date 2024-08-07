@@ -16,7 +16,7 @@
 
 namespace godot {
 
-class EvmDisassembler: public virtual RefCounted {
+class EvmDisassembler: public RefCounted {
   GDCLASS(EvmDisassembler, RefCounted)
 
 public:

@@ -16,7 +16,7 @@
 
 namespace godot {
 
-class EvmExecutor: public virtual RefCounted {
+class EvmExecutor: public RefCounted {
   GDCLASS(EvmExecutor, RefCounted)
 
 public:

@@ -21,6 +21,10 @@ typedef struct evm_s {
   int32_t       *stack;
   const uint8_t *program;
   void          *env;
+#if EVM_MEMORY_SUPPORT == 1
+  uint8_t       *mem;
+  uint32_t       segment;
+#endif
 } evm_t;
 
 
@@ -72,9 +76,17 @@ EVM_API int evmHasYielded(const evm_t *);
 #  define evmStackTopf(EVM_PTR)     evmStackValuef(EVM_PTR, 0U)
 #  define evmStackValuef(EVM_PTR, IDX) (*(float *) &(EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
 #endif
+#if EVM_MEMORY_SUPPORT == 1
+#  define evmSystemRam(EVM_PTR) ((EVM_PTR)->mem)
+#  define evmCurrentSegment(EVM_PTR) (((EVM_PTR)->segment >> 16) & 0xFF)
+#  define evmSetSegment(EVM_PTR, val) ((EVM_PTR)->segment = ((val) & 0xFF) << 16)
+
+EVM_API uint32_t evmEffectiveAddress(const evm_t *, uint16_t);
+#endif
 
 #define evmProgramSize(EVM_PTR) ((EVM_PTR)->maxProgram)
 #define evmInstructionIndex(EVM_PTR) ((EVM_PTR)->ip)
+
 
 
 EVM_API int evmPush(evm_t *, int32_t);

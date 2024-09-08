@@ -16,8 +16,11 @@ typedef enum opcode_family_e {
   FAM_MATH = 0x40,
   FAM_BITS = 0x50,
 
-  // 0x60-0xC0 reserved for future expansion
+  // 0x60-0xB0 reserved for future expansion
 
+#if EVM_MEMORY_SUPPORT == 1
+  FAM_MEM  = 0xC0,
+#endif
   FAM_CMP  = 0xD0,
   FAM_JMP  = 0xE0,
   FAM_RET  = 0xF0,
@@ -109,11 +112,32 @@ typedef enum opcode_e {
   OP_INV       = FAM_BITS | 0x05, // bitwise invert value on the top of the stack
   OP_BOOL      = FAM_BITS | 0x06, // force canonicalization of top of stack to TRUE and FALSE
   OP_NOT       = FAM_BITS | 0x07, // negate the boolean value on the top of the stack
+  OP_TRUNC     = FAM_BITS | 0x08, // truncate the stack top to an arbitrary number of bits
+  OP_SIGNEXT   = FAM_BITS | 0x09, // sign extend ithe stack top from and arbitray number of bits to 32
 #if EVM_FLOAT_SUPPORT == 1
-  OP_CONV_FI   = FAM_BITS | 0x08, // convert top of the stack from float to integer
-  OP_CONV_FI_1 = FAM_BITS | 0x09, // convert the second value from float to integer
-  OP_CONV_IF   = FAM_BITS | 0x0A, // convert top of the stack from integer to float
-  OP_CONV_IF_1 = FAM_BITS | 0x0B, // convert the second value from integer to float
+  OP_CONV_FI   = FAM_BITS | 0x0A, // convert top of the stack from float to integer
+  OP_CONV_FI_1 = FAM_BITS | 0x0B, // convert the second value from float to integer
+  OP_CONV_IF   = FAM_BITS | 0x0C, // convert top of the stack from integer to float
+  OP_CONV_IF_1 = FAM_BITS | 0x0D, // convert the second value from integer to float
+#endif
+
+#if EVM_MEMORY_SUPPORT == 1
+  OP_SEG      = FAM_MEM | 0x00, // set the active memory segment
+  OP_READ     = FAM_MEM | 0x01, // read four bytes from a two byte address and push onto the stack
+  OP_WRITE8   = FAM_MEM | 0x02, // write a byte to a two byte address
+  OP_WRITE16  = FAM_MEM | 0x03, // write a short to a two byte address
+  OP_WRITE24  = FAM_MEM | 0x04, // write a trypple to a two byte address
+  OP_WRITE32  = FAM_MEM | 0x05, // write an int to two byte address
+  OP_LREAD    = FAM_MEM | 0x06, // read four bytes from the address on the top of the stack
+  OP_LWRITE8  = FAM_MEM | 0x07, // write the stack top as a byte to the addr in the second value
+  OP_LWRITE16 = FAM_MEM | 0x08, // write the stack top as a short to the addr in the second value
+  OP_LWRITE24 = FAM_MEM | 0x09, // write the stack top as a trypple to the addr in the second value
+  OP_LWRITE32 = FAM_MEM | 0x0A, // write the stack top as an int to the addr in the second value
+  OP_SREAD    = FAM_MEM | 0x0B, // read four bytes from the address on the top of the stack
+  OP_SWRITE8  = FAM_MEM | 0x0C, // write the stack top as a byte to the addr in the second value
+  OP_SWRITE16 = FAM_MEM | 0x0D, // write the stack top as a short to the addr in the second value
+  OP_SWRITE24 = FAM_MEM | 0x0E, // write the stack top as a trypple to the addr in the second value
+  OP_SWRITE32 = FAM_MEM | 0x0f, // write the stack top as an int to the addr in the second value
 #endif
 
   OP_CMP_I0  = FAM_CMP | 0x00, // compare top of stack to 0 as an integer

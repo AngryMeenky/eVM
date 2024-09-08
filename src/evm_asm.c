@@ -10,9 +10,17 @@
 
 typedef enum evm_arg_e {
   ARG_NONE,   // no argument
+  ARG_I5,     // five bit integer literal
   ARG_I8,     // one byte integer literal
   ARG_I16,    // two byte integer literal
+#if EVM_MEMORY_SUPPORT == 1
+  ARG_U8,     // one byte unsigned integer literal
+  ARG_U16,    // two byte unsigned integer literal
+#endif
   ARG_I24,    // three byte integer literal
+#if EVM_MEMORY_SUPPORT == 1
+  ARG_U24,    // three byte unsigned integer literal
+#endif
   ARG_I32,    // four byte integer literal
   ARG_O1,     // optional one bit integer literal
   ARG_O3,     // optional three bit integer literal
@@ -236,65 +244,85 @@ static int evmOptionalSerializer(const evm_mnemonic_t *, evm_instruction_t *);
 
 // List of mnemonics, associated arguments, and covered opcodes
 static const evm_mnemonic_t MNEMONICS[] = {
-  { "NOP",   ARG_NONE,  OP_NOP,     &evmSimpleSerializer   },
-  { "CALL",  ARG_LBL,   OP_CALL,    &evmLabelSerializer    }, // OP_CALL, OP_LCALL
-  { "BLTIN", ARG_I8,    OP_BCALL,   &evmSimpleSerializer   },
-  { "YIELD", ARG_NONE,  OP_YIELD,   &evmSimpleSerializer   },
-  { "HALT",  ARG_NONE,  OP_HALT,    &evmSimpleSerializer   },
-  { "PUSH",  ARG_I32,   OP_PUSH_I0, &evmPushSerializer     }, // OP_PUSH_{I0,I1,IN1,8I,16I,24I,32I}
-  { "SWAP",  ARG_NONE,  OP_SWAP,    &evmSimpleSerializer   },
-  { "POP",   ARG_O3,    OP_POP_1,   &evmOptionalSerializer }, // OP_POP_{1,2,3,4,5,6,7,8}
-  { "REM",   ARG_I4_O4, OP_REM_1,   &evmOptionalSerializer }, // OP_REM_{1,2,3,4,5,6,7,R}
+  { "NOP",      ARG_NONE,  OP_NOP,      &evmSimpleSerializer   },
+  { "CALL",     ARG_LBL,   OP_CALL,     &evmLabelSerializer    }, // OP_CALL, OP_LCALL
+  { "BLTIN",    ARG_I8,    OP_BCALL,    &evmSimpleSerializer   },
+  { "YIELD",    ARG_NONE,  OP_YIELD,    &evmSimpleSerializer   },
+  { "HALT",     ARG_NONE,  OP_HALT,     &evmSimpleSerializer   },
+  { "PUSH",     ARG_I32,   OP_PUSH_I0,  &evmPushSerializer     }, // OP_PUSH_{I0,I1,IN1,8I,16I,24I,32I}
+  { "SWAP",     ARG_NONE,  OP_SWAP,     &evmSimpleSerializer   },
+  { "POP",      ARG_O3,    OP_POP_1,    &evmOptionalSerializer }, // OP_POP_{1,2,3,4,5,6,7,8}
+  { "REM",      ARG_I4_O4, OP_REM_1,    &evmOptionalSerializer }, // OP_REM_{1,2,3,4,5,6,7,R}
   // OP_DUP_{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
-  { "DUP",   ARG_O4,    OP_DUP_0,   &evmOptionalSerializer },
-  { "INC",   ARG_NONE,  OP_INC_I,   &evmSimpleSerializer   },
-  { "DEC",   ARG_NONE,  OP_DEC_I,   &evmSimpleSerializer   },
-  { "ABS",   ARG_NONE,  OP_ABS_I,   &evmSimpleSerializer   },
-  { "NEG",   ARG_NONE,  OP_NEG_I,   &evmSimpleSerializer   },
-  { "ADD",   ARG_NONE,  OP_ADD_I,   &evmSimpleSerializer   },
-  { "SUB",   ARG_NONE,  OP_SUB_I,   &evmSimpleSerializer   },
-  { "MUL",   ARG_NONE,  OP_MUL_I,   &evmSimpleSerializer   },
-  { "DIV",   ARG_NONE,  OP_DIV_I,   &evmSimpleSerializer   },
-  { "LSH",   ARG_NONE,  OP_LSH,     &evmSimpleSerializer   },
-  { "RSH",   ARG_NONE,  OP_RSH,     &evmSimpleSerializer   },
-  { "AND",   ARG_NONE,  OP_AND,     &evmSimpleSerializer   },
-  { "OR",    ARG_NONE,  OP_OR,      &evmSimpleSerializer   },
-  { "XOR",   ARG_NONE,  OP_XOR,     &evmSimpleSerializer   },
-  { "INV",   ARG_NONE,  OP_INV,     &evmSimpleSerializer   },
-  { "BOOL",  ARG_NONE,  OP_BOOL,    &evmSimpleSerializer   },
-  { "NOT",   ARG_NONE,  OP_NOT,     &evmSimpleSerializer   },
-  { "CMP",   ARG_O8,    OP_CMP_I0,  &evmCompareSerializer  }, // OP_CMP_{I0,I1,IN1,I}
-  { "JMP",   ARG_LBL,   OP_JMP,     &evmLabelSerializer    },
-  { "JLT",   ARG_LBL,   OP_JLT,     &evmLabelSerializer    },
-  { "JLE",   ARG_LBL,   OP_JLE,     &evmLabelSerializer    },
-  { "JNE",   ARG_LBL,   OP_JNE,     &evmLabelSerializer    },
-  { "JEQ",   ARG_LBL,   OP_JEQ,     &evmLabelSerializer    },
-  { "JGE",   ARG_LBL,   OP_JGE,     &evmLabelSerializer    },
-  { "JGT",   ARG_LBL,   OP_JGT,     &evmLabelSerializer    },
-  { "JTBL",  ARG_NONE,  OP_JTBL,    &evmSimpleSerializer   },
-  { "LJMP",  ARG_LBL,   OP_JMP,     &evmLabelSerializer    },
-  { "LJLT",  ARG_LBL,   OP_JLT,     &evmLabelSerializer    },
-  { "LJLE",  ARG_LBL,   OP_JLE,     &evmLabelSerializer    },
-  { "LJNE",  ARG_LBL,   OP_JNE,     &evmLabelSerializer    },
-  { "LJEQ",  ARG_LBL,   OP_JEQ,     &evmLabelSerializer    },
-  { "LJGE",  ARG_LBL,   OP_JGE,     &evmLabelSerializer    },
-  { "LJGT",  ARG_LBL,   OP_JGT,     &evmLabelSerializer    },
-  { "LJTBL", ARG_NONE,  OP_LJTBL,   &evmSimpleSerializer   },
+  { "DUP",      ARG_O4,    OP_DUP_0,    &evmOptionalSerializer },
+  { "INC",      ARG_NONE,  OP_INC_I,    &evmSimpleSerializer   },
+  { "DEC",      ARG_NONE,  OP_DEC_I,    &evmSimpleSerializer   },
+  { "ABS",      ARG_NONE,  OP_ABS_I,    &evmSimpleSerializer   },
+  { "NEG",      ARG_NONE,  OP_NEG_I,    &evmSimpleSerializer   },
+  { "ADD",      ARG_NONE,  OP_ADD_I,    &evmSimpleSerializer   },
+  { "SUB",      ARG_NONE,  OP_SUB_I,    &evmSimpleSerializer   },
+  { "MUL",      ARG_NONE,  OP_MUL_I,    &evmSimpleSerializer   },
+  { "DIV",      ARG_NONE,  OP_DIV_I,    &evmSimpleSerializer   },
+  { "LSH",      ARG_NONE,  OP_LSH,      &evmSimpleSerializer   },
+  { "RSH",      ARG_NONE,  OP_RSH,      &evmSimpleSerializer   },
+  { "AND",      ARG_NONE,  OP_AND,      &evmSimpleSerializer   },
+  { "OR",       ARG_NONE,  OP_OR,       &evmSimpleSerializer   },
+  { "XOR",      ARG_NONE,  OP_XOR,      &evmSimpleSerializer   },
+  { "INV",      ARG_NONE,  OP_INV,      &evmSimpleSerializer   },
+  { "BOOL",     ARG_NONE,  OP_BOOL,     &evmSimpleSerializer   },
+  { "NOT",      ARG_NONE,  OP_NOT,      &evmSimpleSerializer   },
+  { "TRUNC",    ARG_I5,    OP_TRUNC,    &evmSimpleSerializer   },
+  { "SIGNEXT",  ARG_I5,    OP_SIGNEXT,  &evmSimpleSerializer   },
+#if EVM_MEMORY_SUPPORT == 1
+  { "SEG",      ARG_U8,    OP_SEG,      &evmSimpleSerializer   },
+  { "READ",     ARG_U16,   OP_READ,     &evmSimpleSerializer   },
+  { "WRITE8",   ARG_U16,   OP_WRITE8,   &evmSimpleSerializer   },
+  { "WRITE16",  ARG_U16,   OP_WRITE16,  &evmSimpleSerializer   },
+  { "WRITE24",  ARG_U16,   OP_WRITE24,  &evmSimpleSerializer   },
+  { "WRITE32",  ARG_U16,   OP_WRITE32,  &evmSimpleSerializer   },
+  { "LREAD",    ARG_U24,   OP_LREAD,    &evmSimpleSerializer   },
+  { "LWRITE8",  ARG_U24,   OP_LWRITE8,  &evmSimpleSerializer   },
+  { "LWRITE16", ARG_U24,   OP_LWRITE16, &evmSimpleSerializer   },
+  { "LWRITE24", ARG_U24,   OP_LWRITE24, &evmSimpleSerializer   },
+  { "LWRITE32", ARG_U24,   OP_LWRITE32, &evmSimpleSerializer   },
+  { "SREAD",    ARG_NONE,  OP_SREAD,    &evmSimpleSerializer   },
+  { "SWRITE8",  ARG_NONE,  OP_SWRITE8,  &evmSimpleSerializer   },
+  { "SWRITE16", ARG_NONE,  OP_SWRITE16, &evmSimpleSerializer   },
+  { "SWRITE24", ARG_NONE,  OP_SWRITE24, &evmSimpleSerializer   },
+  { "SWRITE32", ARG_NONE,  OP_SWRITE32, &evmSimpleSerializer   },
+#endif
+  { "CMP",      ARG_O8,    OP_CMP_I0,   &evmCompareSerializer  }, // OP_CMP_{I0,I1,IN1,I}
+  { "JMP",      ARG_LBL,   OP_JMP,      &evmLabelSerializer    },
+  { "JLT",      ARG_LBL,   OP_JLT,      &evmLabelSerializer    },
+  { "JLE",      ARG_LBL,   OP_JLE,      &evmLabelSerializer    },
+  { "JNE",      ARG_LBL,   OP_JNE,      &evmLabelSerializer    },
+  { "JEQ",      ARG_LBL,   OP_JEQ,      &evmLabelSerializer    },
+  { "JGE",      ARG_LBL,   OP_JGE,      &evmLabelSerializer    },
+  { "JGT",      ARG_LBL,   OP_JGT,      &evmLabelSerializer    },
+  { "JTBL",     ARG_NONE,  OP_JTBL,     &evmSimpleSerializer   },
+  { "LJMP",     ARG_LBL,   OP_LJMP,     &evmLabelSerializer    },
+  { "LJLT",     ARG_LBL,   OP_LJLT,     &evmLabelSerializer    },
+  { "LJLE",     ARG_LBL,   OP_LJLE,     &evmLabelSerializer    },
+  { "LJNE",     ARG_LBL,   OP_LJNE,     &evmLabelSerializer    },
+  { "LJEQ",     ARG_LBL,   OP_LJEQ,     &evmLabelSerializer    },
+  { "LJGE",     ARG_LBL,   OP_LJGE,     &evmLabelSerializer    },
+  { "LJGT",     ARG_LBL,   OP_LJGT,     &evmLabelSerializer    },
+  { "LJTBL",    ARG_NONE,  OP_LJTBL,    &evmSimpleSerializer   },
   // OP_RET{,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_I}
-  { "RET",   ARG_O8,    OP_RET,     &evmOptionalSerializer },
+  { "RET",      ARG_O8,    OP_RET,      &evmOptionalSerializer },
 #if EVM_FLOAT_SUPPORT == 1
-  { "PUSHF", ARG_F32,   OP_PUSH_F0, &evmPushSerializer     }, // OP_PUSH_{F0,F1,FN1,F}}
-  { "INCF",  ARG_NONE,  OP_INC_F,   &evmSimpleSerializer   },
-  { "DECF",  ARG_NONE,  OP_DEC_F,   &evmSimpleSerializer   },
-  { "ABSF",  ARG_NONE,  OP_ABS_F,   &evmSimpleSerializer   },
-  { "NEGF",  ARG_NONE,  OP_NEG_F,   &evmSimpleSerializer   },
-  { "ADDF",  ARG_NONE,  OP_ADD_F,   &evmSimpleSerializer   },
-  { "SUBF",  ARG_NONE,  OP_SUB_F,   &evmSimpleSerializer   },
-  { "MULF",  ARG_NONE,  OP_MUL_F,   &evmSimpleSerializer   },
-  { "DIVF",  ARG_NONE,  OP_DIV_F,   &evmSimpleSerializer   },
-  { "CNVFI", ARG_O1,    OP_CONV_FI, &evmOptionalSerializer }, // OP_CONV_{FI,FI_1}
-  { "CNVIF", ARG_O1,    OP_CONV_IF, &evmOptionalSerializer }, // OP_CONV_{IF,IF_1}
-  { "CMPF",  ARG_OF32,  OP_CMP_F0,  &evmCompareSerializer  }, // OP_CMP_{F0,F1,FN1,F}
+  { "PUSHF",    ARG_F32,   OP_PUSH_F0,  &evmPushSerializer     }, // OP_PUSH_{F0,F1,FN1,F}}
+  { "INCF",     ARG_NONE,  OP_INC_F,    &evmSimpleSerializer   },
+  { "DECF",     ARG_NONE,  OP_DEC_F,    &evmSimpleSerializer   },
+  { "ABSF",     ARG_NONE,  OP_ABS_F,    &evmSimpleSerializer   },
+  { "NEGF",     ARG_NONE,  OP_NEG_F,    &evmSimpleSerializer   },
+  { "ADDF",     ARG_NONE,  OP_ADD_F,    &evmSimpleSerializer   },
+  { "SUBF",     ARG_NONE,  OP_SUB_F,    &evmSimpleSerializer   },
+  { "MULF",     ARG_NONE,  OP_MUL_F,    &evmSimpleSerializer   },
+  { "DIVF",     ARG_NONE,  OP_DIV_F,    &evmSimpleSerializer   },
+  { "CNVFI",    ARG_O1,    OP_CONV_FI,  &evmOptionalSerializer }, // OP_CONV_{FI,FI_1}
+  { "CNVIF",    ARG_O1,    OP_CONV_IF,  &evmOptionalSerializer }, // OP_CONV_{IF,IF_1}
+  { "CMPF",     ARG_OF32,  OP_CMP_F0,   &evmCompareSerializer  }, // OP_CMP_{F0,F1,FN1,F}
 #endif
 
   { NULL,    ARG_NONE,  OP_NOP,     NULL }, // "null" terminator at the end of the array
@@ -1567,11 +1595,32 @@ static int evmSimpleSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
   if(m->arg == ARG_NONE) {
     i->flags |= INST_FINALIZED;
   }
+  else if(m->arg == ARG_I5) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
+      if(1 <= operand && operand <= 31) {
+        i->binary[1] = (int8_t) operand;
+        i->flags |= INST_FINALIZED;
+        i->count++;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (1 <= %d <= 31)", &m->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &m->tag[0]);
+    }
+  }
   else if(m->arg == ARG_I8) {
     int32_t operand;
 
     if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
-      if(-128 <= operand  && operand <= 127) {
+      if(-128 <= operand && operand <= 127) {
         i->binary[1] = (int8_t) operand;
         i->flags |= INST_FINALIZED;
         i->count++;
@@ -1588,6 +1637,74 @@ static int evmSimpleSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
   }
+  else if(m->arg == ARG_U8) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
+      if(0 <= operand && operand <= 255) {
+        i->binary[1] = operand & 0xFF;
+        i->flags |= INST_FINALIZED;
+        i->count++;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (-128 <= %d <= 127)", &m->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &m->tag[0]);
+    }
+  }
+#if EVM_MEMORY_SUPPORT == 1
+  else if(m->arg == ARG_U16) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %x", &operand) == 1) {
+      if(0 <= operand && operand <= 0xFFFF) {
+        i->binary[1] =  operand       & 0xFF;
+        i->binary[2] = (operand >> 8) & 0xFF;
+        i->flags |= INST_FINALIZED;
+        i->count += 2;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (0x0000 <= 0x%04X <= 0xFFFF)", &m->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &m->tag[0]);
+    }
+  }
+  else if(m->arg == ARG_U24) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %x", &operand) == 1) {
+      if(0 <= operand && operand <= 0xFFFFFF) {
+        i->binary[1] =  operand        & 0xFF;
+        i->binary[2] = (operand >>  8) & 0xFF;
+        i->binary[3] = (operand >> 16) & 0xFF;
+        i->flags |= INST_FINALIZED;
+        i->count += 3;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (0x000000 <= 0x%06X <= 0xFFFFFF)", &m->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &m->tag[0]);
+    }
+  }
+#endif
   else {
     EVM_FATALF("Unsupported operand type while processing %s", &m->tag[0]);
   }

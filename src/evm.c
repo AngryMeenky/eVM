@@ -42,7 +42,15 @@ evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize) {
 #endif
     vm->program = NULL;
     vm->env = user;
+#if EVM_MEMORY_SUPPORT == 1
+    vm->mem = (uint8_t *) EVM_CALLOC(0x01000000, sizeof(uint8_t));
+    EVM_DEBUGF(
+      "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
+      vm, vm->stack, vm->env, vm->program, vm->mem
+    );
+#else
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
+#endif
   }
 
   EVM_TRACEF("Exit %s", __FUNCTION__);
@@ -51,7 +59,6 @@ evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize) {
 
 
 evm_t *evmFinalize(evm_t *vm) {
-  evm_t *retVal = NULL;
   EVM_TRACEF("Enter %s", __FUNCTION__);
 
   if(vm) {
@@ -60,22 +67,36 @@ evm_t *evmFinalize(evm_t *vm) {
     if(vm->stack  ) { EVM_FREE((void *) vm->stack);   }
 #endif
     if(vm->program) { EVM_FREE((void *) vm->program); }
-
-    retVal = vm->env;
-
+#if EVM_MEMORY_SUPPORT == 1
+    if(vm->mem) { EVM_FREE((void *) vm->mem); }
+#endif
     memset(vm, 0, sizeof(evm_t));
     vm->flags |= EVM_HALTED;
+#if EVM_MEMORY_SUPPORT == 1
+    EVM_DEBUGF(
+      "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
+      vm, vm->stack, vm->env, vm->program, vm->mem
+    );
+#else
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
+#endif
   }
 
   EVM_TRACEF("Exit %s", __FUNCTION__);
-  return retVal;
+  return vm;
 }
 
 
 void evmFree(evm_t *vm) {
   EVM_TRACEF("Enter %s", __FUNCTION__);
+#if EVM_MEMORY_SUPPORT == 1
+  EVM_DEBUGF(
+    "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
+    vm, vm->stack, vm->env, vm->program, vm->mem
+  );
+#else
   EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
+#endif
   EVM_FREE((void *) vm);
   EVM_TRACEF("Exit %s", __FUNCTION__);
 }
@@ -83,8 +104,15 @@ void evmFree(evm_t *vm) {
 
 int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
   EVM_TRACEF("Enter %s", __FUNCTION__);
-  if(vm && prog && length < 0xFFFFFFFFU) {
+  if(vm && prog && length < 0x01000000U) {
+#if EVM_MEMORY_SUPPORT == 1
+    EVM_DEBUGF(
+      "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
+      vm, vm->stack, vm->env, vm->program, vm->mem
+    );
+#else
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
+#endif
 #if EVM_STATIC_PROGRAM == 1
     vm->program = prog;
 #else
@@ -96,7 +124,14 @@ int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
     vm->maxProgram = length;
     vm->flags &= ~(EVM_HALTED | EVM_YIELD); // clear the halt and yield flags on success
 
+#if EVM_MEMORY_SUPPORT == 1
+    EVM_DEBUGF(
+      "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
+      vm, vm->stack, vm->env, vm->program, vm->mem
+    );
+#else
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
+#endif
     EVM_TRACEF("Exit %s", __FUNCTION__);
     return 0;
   }
@@ -123,9 +158,15 @@ static int32_t evmIllegalState(evm_t *vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF(
       "Illegal state: sp(%04X/%04X) ip(%08X/%08X), flags(%08X)\n"
-      "                      stack(%p), prog(%p), env(%p)",
-      vm->sp, vm->maxStack, vm->ip, vm->maxProgram, vm->flags,
+      "                      stack(%p), prog(%p), env(%p)"
+#if EVM_MEMORY_SUPPORT == 1
+      ", mem(%p), seg(%u)"
+#endif
+    , vm->sp, vm->maxStack, vm->ip, vm->maxProgram, vm->flags,
       vm->stack, vm->program, vm->env
+#if EVM_MEMORY_SUPPORT == 1
+    , vm->mem, evmCurrentSegment(vm)
+#endif
     );
   }
 
@@ -186,6 +227,17 @@ int evmHasYielded(const evm_t *vm) {
   EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
+
+
+#if EVM_MEMORY_SUPPORT == 1
+uint32_t evmEffectiveAddress(const evm_t *vm, uint16_t addr) {
+  uint32_t ptr = addr;
+  EVM_TRACEF("Enter %s", __FUNCTION__);
+  if(vm) { ptr += vm->segment; }
+  EVM_TRACEF("Exit %s", __FUNCTION__);
+  return ptr;
+}
+#endif
 
 
 int evmPush(evm_t *vm, int32_t val) {
@@ -322,9 +374,42 @@ int evmPop(evm_t *vm) {
 #define EVM_TOP_F(VM) EVM_STACK_F(VM, 0U)
 
 
+#if EVM_MEMORY_SUPPORT == 1
+static void evmSaveInt8(uint8_t *src, int32_t val) {
+   *(int8_t *) src = (int8_t) val;
+}
+
+
+static int32_t evmLoadUint8(const uint8_t *src) {
+  return (int32_t) *src;
+}
+#endif
+
+
 static int32_t evmLoadInt8(const uint8_t *src) {
   return (int32_t) *(const int8_t *) src;
 }
+
+
+#if EVM_MEMORY_SUPPORT == 1
+static void evmSaveInt16(uint8_t *src, int32_t val) {
+#if EVM_UNALIGNED_READS == 1
+  *(int16_t *) src = (int16_t) val;
+#else
+  src[0] =  val       & 0xFF;
+  src[1] = (val >> 8) & 0xFF;
+#endif
+}
+
+
+static int32_t evmLoadUint16(const uint8_t *src) {
+#if EVM_UNALIGNED_READS == 1
+  return (int32_t) *(const uint16_t *) src;
+#else
+  return (int32_t) (((uint32_t) src[0]) | (((uint32_t) src[1]) << 8)) >> 16;
+#endif
+}
+#endif
 
 
 static int32_t evmLoadInt16(const uint8_t *src) {
@@ -337,14 +422,48 @@ static int32_t evmLoadInt16(const uint8_t *src) {
 
 
 static int32_t evmLoadInt24(const uint8_t *src) {
+#if EVM_UNALIGNED_READS == 1
+  return (*(const int32_t *) src << 8) >> 8;
+#else
   return ((int32_t) ((((uint32_t) src[0]) <<  8) | (((uint32_t) src[1]) << 16) |
                     (((uint32_t) src[2]) << 24))) >> 8;
+#endif
 }
 
 
+#if EVM_MEMORY_SUPPORT == 1
+static void evmSaveInt24(uint8_t *src, int32_t val) {
+  src[0] =  val        & 0xFF;
+  src[1] = (val >>  8) & 0xFF;
+  src[2] = (val >> 16) & 0xFF;
+}
+
+
+static int32_t evmLoadUint24(const uint8_t *src) {
+#if EVM_UNALIGNED_READS == 1
+  return *(const uint32_t *) src & 0xFFFFFFU;
+#else
+  return (int32_t) (((uint32_t) src[0]) | (((uint32_t) src[1]) << 8) |
+                   (((uint32_t) src[2]) << 16));
+#endif
+}
+
+
+static void evmSaveInt32(uint8_t *src, int32_t val) {
+#if EVM_UNALIGNED_READS == 1
+  *(int32_t *) src = val;
+#else
+  src[0] =  val        & 0xFF;
+  src[1] = (val >>  8) & 0xFF;
+  src[2] = (val >> 16) & 0xFF;
+  src[3] = (val >> 24) & 0xFF;
+#endif
+}
+#endif
+
 static int32_t evmLoadInt32(const uint8_t *src) {
 #if EVM_UNALIGNED_READS == 1
-  return (int32_t) *(const int32_t *) src;
+  return *(const int32_t *) src;
 #else
   return  ((int32_t) src[0]      ) | (((int32_t) src[1]) <<  8) |
           ((int32_t) src[2] << 16) | (((int32_t) src[3]) << 24);
@@ -842,6 +961,25 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
           else { EVM_TOP_I(local) = !EVM_TOP_I(local); }
         break;
 
+        case OP_TRUNC:
+          EVM_TRACEF("%08X: TRUNC8 %d", local.ip, local.program[local.ip + 1U]);
+          local.ip += 2U; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            EVM_TOP_I(local) &= 0xFFFFFFFFU >> (32 - (local.program[local.ip - 1U] & 0x1F));
+          }
+        break;
+
+        case OP_SIGNEXT:
+          EVM_TRACEF("%08X: SIGNEXT %d", local.ip, local.program[local.ip + 1U]);
+          local.ip += 2U; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            const int shift = local.program[local.ip - 1U] & 0x1F;
+            EVM_TOP_I(local) = (EVM_TOP_I(local) << shift) >> shift;
+          }
+        break;
+
 #if EVM_FLOAT_SUPPORT == 1
         case OP_CONV_FI:
           EVM_TRACEF("%08X: CONVFI 0", local.ip);
@@ -869,6 +1007,176 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
           ++local.ip; // move to the next instruction
           if(!local.sp) { (void) evmStackUnderflow(&local); }
           else { EVM_STACK_F(local, 1U) = (float) EVM_STACK_I(local, 1U); }
+        break;
+#endif
+
+#if EVM_MEMORY_SUPPORT == 1
+        case OP_SEG:
+          EVM_TRACEF("%08X: SEG %d", local.ip, evmLoadUint8(&local.program[local.ip + 1U]));
+          local.ip += 2; // move to the next instruction
+          evmSetSegment(&local, evmLoadUint8(&local.program[local.ip - 1U])); // update the segment
+        break;
+
+        case OP_READ:
+          EVM_TRACEF(
+            "%08X: READ 0x%06X", local.ip,
+            evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip + 1U]))
+          );
+          local.ip += 3; // move to the next instruction
+          EVM_PUSH(
+            local, evmLoadInt32(&local.mem[
+              evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip - 2U]))
+            ])
+          ); // push a signed int
+        break;
+
+        case OP_WRITE8:
+          EVM_TRACEF(
+            "%08X: WRITE8 0x%06X", local.ip,
+            evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip + 1U]))
+          );
+          local.ip += 3; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt8(
+              &local.mem[evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip - 2U]))],
+              EVM_TOP_I(local)
+            );
+          }
+        break;
+
+        case OP_WRITE16:
+          EVM_TRACEF(
+            "%08X: WRITE16 0x%06X", local.ip,
+            evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip + 1U]))
+          );
+          local.ip += 3; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt16(
+              &local.mem[evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip - 2U]))],
+              EVM_TOP_I(local)
+            );
+          }
+        break;
+
+        case OP_WRITE24:
+          EVM_TRACEF(
+            "%08X: WRITE24 0x%06X", local.ip,
+            evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip + 1U]))
+          );
+          local.ip += 3; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt24(
+              &local.mem[evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip - 2U]))],
+              EVM_TOP_I(local)
+            );
+          }
+        break;
+
+        case OP_WRITE32:
+          EVM_TRACEF(
+            "%08X: WRITE32 0x%06X", local.ip,
+            evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip + 1U]))
+          );
+          local.ip += 3; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt32(
+              &local.mem[evmEffectiveAddress(&local, evmLoadUint16(&local.program[local.ip - 2U]))],
+              EVM_TOP_I(local)
+            );
+          }
+        break;
+
+        case OP_LREAD:
+          EVM_TRACEF("%08X: LREAD 0x%06X", local.ip, evmLoadUint24(&local.program[local.ip + 1U]));
+          local.ip += 4; // move to the next instruction
+          EVM_PUSH(local, evmLoadInt32(&local.mem[evmLoadUint24(&local.program[local.ip - 3U])]));
+        break;
+
+        case OP_LWRITE8:
+          EVM_TRACEF("%08X: LWRITE8 0x%06X", local.ip, evmLoadUint24(&local.program[local.ip + 1U]));
+          local.ip += 4; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt8(&local.mem[evmLoadUint24(&local.program[local.ip - 3U])], EVM_TOP_I(local));
+          }
+        break;
+
+        case OP_LWRITE16:
+          EVM_TRACEF("%08X: LWRITE16 0x%06X", local.ip, evmLoadUint24(&local.program[local.ip + 1U]));
+          local.ip += 4; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt16(&local.mem[evmLoadUint24(&local.program[local.ip - 3U])], EVM_TOP_I(local));
+          }
+        break;
+
+        case OP_LWRITE24:
+          EVM_TRACEF("%08X: LWRITE24 0x%06X", local.ip, evmLoadUint24(&local.program[local.ip + 1U]));
+          local.ip += 4; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt24(&local.mem[evmLoadUint24(&local.program[local.ip - 3U])], EVM_TOP_I(local));
+          }
+        break;
+
+        case OP_LWRITE32:
+          EVM_TRACEF("%08X: LWRITE32 0x%06X", local.ip, evmLoadUint24(&local.program[local.ip + 1U]));
+          local.ip += 4; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt32(&local.mem[evmLoadUint24(&local.program[local.ip - 3U])], EVM_TOP_I(local));
+          }
+        break;
+
+        case OP_SREAD:
+          EVM_TRACEF("%08X: SREAD", local.ip);
+          ++local.ip; // move to the next instruction
+          if(!local.sp) { (void) evmStackUnderflow(&local); }
+          else { EVM_TOP_I(local) = local.mem[EVM_TOP_I(local) & 0x00FFFFFF]; }
+        break;
+
+        case OP_SWRITE8:
+          EVM_TRACEF("%08X: SWRITE8", local.ip);
+          ++local.ip; // move to the next instruction
+          if(local.sp < 2) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt8(&local.mem[EVM_STACK_I(local, 1U) & 0x00FFFFFF], EVM_TOP_I(local));
+            local.sp -= 2; // pop the values used
+          }
+        break;
+
+        case OP_SWRITE16:
+          EVM_TRACEF("%08X: SWRITE16", local.ip);
+          ++local.ip; // move to the next instruction
+          if(local.sp < 2) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt16(&local.mem[EVM_STACK_I(local, 1U) & 0x00FFFFFF], EVM_TOP_I(local));
+            local.sp -= 2; // pop the values used
+          }
+        break;
+
+        case OP_SWRITE24:
+          EVM_TRACEF("%08X: SWRITE24", local.ip);
+          ++local.ip; // move to the next instruction
+          if(local.sp < 2) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt24(&local.mem[EVM_STACK_I(local, 1U) & 0x00FFFFFF], EVM_TOP_I(local));
+            local.sp -= 2; // pop the values used
+          }
+        break;
+
+        case OP_SWRITE32:
+          EVM_TRACEF("%08X: SWRITE32", local.ip);
+          ++local.ip; // move to the next instruction
+          if(local.sp < 2) { (void) evmStackUnderflow(&local); }
+          else {
+            evmSaveInt32(&local.mem[EVM_STACK_I(local, 1U) & 0x00FFFFFF], EVM_TOP_I(local));
+            local.sp -= 2; // pop the values used
+          }
         break;
 #endif
 

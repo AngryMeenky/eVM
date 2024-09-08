@@ -28,6 +28,12 @@
 #  define EVM_FLOAT_SUPPORT (1)
 #endif
 
+// Support 16MB of system ram?
+// valid values: [0,1]
+#ifndef EVM_MEMORY_SUPPORT
+#  define EVM_MEMORY_SUPPORT (1)
+#endif
+
 // Require statically allocated stack?
 // valid values: [0,1]
 #ifndef EVM_STATIC_STACK
@@ -120,6 +126,12 @@
 #  error "EVM_FLOAT_SUPPORT is undefined"
 #elif EVM_FLOAT_SUPPORT < 0 || EVM_FLOAT_SUPPORT > 1
 #  error "EVM_FLOAT_SUPPORT is out of range"
+#endif
+
+#if !defined(EVM_MEMORY_SUPPORT)
+#  error "EVM_MEMORY_SUPPORT is undefined"
+#elif EVM_MEMORY_SUPPORT < 0 || EVM_MEMORY_SUPPORT > 1
+#  error "EVM_MEMORY_SUPPORT is out of range"
 #endif
 
 #if !defined(EVM_STATIC_STACK)

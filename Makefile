@@ -48,7 +48,7 @@ ASMS := bin/example.evm \
 BINARIES := $(EXAMPLE_BIN) \
             $(DISASM_BIN) \
             $(ASM_BIN) \
-	    $(ASMS)
+            $(ASMS)
 
 
 .PHONY: all clean debug release gdextension-linux gdextension-macos gdextension-windows

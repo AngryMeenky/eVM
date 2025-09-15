@@ -227,6 +227,7 @@ static const evm_directive_t DIRECTIVES[] = {
   { ".addr",   &evmTextDirective,    ARG_LBL,  DIR_TBL  },
   { ".db",     &evmDataDirective,    ARG_I8,   DIR_DATA },
   { ".dh",     &evmDataDirective,    ARG_I16,  DIR_DATA },
+  { ".dt",     &evmDataDirective,    ARG_I24,  DIR_DATA },
   { ".dw",     &evmDataDirective,    ARG_I32,  DIR_DATA },
 #if EVM_FLOAT_SUPPORT == 1
   { ".df",     &evmDataDirective,    ARG_F32,  DIR_DATA },
@@ -1323,6 +1324,28 @@ static int evmDataDirective(const evm_directive_t *d, evm_instruction_t *i) {
         result = -1;
         i->flags |= INST_INVALID_ARG;
         EVM_ERRORF("Operand out of bounds for %s (-32768 <= %d <= 65535)", &d->tag[0], operand);
+      }
+    }
+    else {
+      result = -1;
+      i->flags |= INST_MISSING_ARG;
+      EVM_ERRORF("Missing operand for %s", &d->tag[0]);
+    }
+  }
+  else if(d->arg == ARG_I24) {
+    int32_t operand;
+
+    if(sscanf(&i->text[0], "%*s %d", &operand) == 1) {
+      if(-8388608 <= operand && operand <= 16777215) {
+        i->binary[1] = (uint8_t) ( operand        & 0xFF);
+        i->binary[2] = (uint8_t) ((operand >>  8) & 0xFF);
+        i->binary[3] = (uint8_t) ((operand >> 16) & 0xFF);
+        i->count += 3;
+      }
+      else {
+        result = -1;
+        i->flags |= INST_INVALID_ARG;
+        EVM_ERRORF("Operand out of bounds for %s (-8388608 <= %d <= 16777215)", &d->tag[0], operand);
       }
     }
     else {

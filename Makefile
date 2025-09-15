@@ -37,12 +37,18 @@ DISASM_LIBS :=
 
 OBJECTS := $(sort $(ASM_OBJS) $(DISASM_OBJS) $(EXAMPLE_OBJS))
 DEPS := $(OBJECTS:.o=.d)
+ASMS := bin/example.evm \
+	bin/no_float_no_mem.evm \
+	bin/no_float_yes_mem.evm \
+	bin/yes_float_no_mem.evm \
+	bin/yes_float_yes_mem.evm
 
 
 # final targets
 BINARIES := $(EXAMPLE_BIN) \
             $(DISASM_BIN) \
-            $(ASM_BIN)
+            $(ASM_BIN) \
+	    $(ASMS)
 
 
 .PHONY: all clean debug release gdextension-linux gdextension-macos gdextension-windows
@@ -52,13 +58,17 @@ release: all
 debug: all
 
 
-all: $(BINARIES)
+all: $(BINARIES) assemble
+
+
+assemble: $(ASMS)
 
 
 clean:
 	rm -f $(BINARIES)
 	rm -f $(OBJECTS)
 	rm -f $(DEPS)
+	rm -f $(ASMS)
 
 
 obj/%.o: src/%.c
@@ -70,6 +80,7 @@ $(EXAMPLE_BIN): $(EXAMPLE_OBJS)
 ifeq ($(DO_STRIP),1)
 	$(STRIP) $(SFLAGS) $@
 endif
+
 
 $(ASM_BIN): $(ASM_OBJS)
 	$(LINK.c) -o $@ $^ $(ASM_LIBS)
@@ -83,6 +94,10 @@ $(DISASM_BIN): $(DISASM_OBJS)
 ifeq ($(DO_STRIP),1)
 	$(STRIP) $(SFLAGS) $@
 endif
+
+
+bin/%.evm: res/%.asm $(ASM_BIN)
+	$(ASM_BIN) $< > $@
 
 
 -include obj/*.d

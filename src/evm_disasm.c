@@ -278,6 +278,11 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         case OP_INV:
         case OP_BOOL:
         case OP_NOT:
+        case OP_SREAD:
+        case OP_SWRITE8:
+        case OP_SWRITE16:
+        case OP_SWRITE24:
+        case OP_SWRITE32:
         case OP_CMP_I0:
         case OP_CMP_I1:
         case OP_CMP_IN1:
@@ -332,6 +337,11 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         case OP_BCALL:
         case OP_PUSH_8I:
         case OP_REM_R:
+        case OP_TRUNC:
+        case OP_SIGNEXT:
+#if EVM_MEMORY_SUPPORT == 1
+        case OP_SEG:
+#endif
         case OP_JMP:
         case OP_JLT:
         case OP_JLE:
@@ -352,6 +362,13 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         // opcode + 2
         case OP_CALL:
         case OP_PUSH_16I:
+#if EVM_MEMORY_SUPPORT == 1
+        case OP_READ:
+        case OP_WRITE8:
+        case OP_WRITE16:
+        case OP_WRITE24:
+        case OP_WRITE32:
+#endif
         case OP_LJMP:
         case OP_LJLT:
         case OP_LJLE:
@@ -371,6 +388,13 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         // opcode + 3
         case OP_LCALL:
         case OP_PUSH_24I:
+#if EVM_MEMORY_SUPPORT == 1
+        case OP_LREAD:
+        case OP_LWRITE8:
+        case OP_LWRITE16:
+        case OP_LWRITE24:
+        case OP_LWRITE32:
+#endif
           if((length - consumed) >= 4) {
             evmdisAddInstruction(evm, buffer, consumed, 4);
             consumed += 4;
@@ -477,12 +501,13 @@ static const char *OP_STRINGS[] = {
 #endif
   // FAM_BITS
   "LSH",     "RSH",     "AND",     "OR",      "XOR",     "INV",     "BOOL",    "NOT",
+  "TRUNC",   "SIGNEXT",
 #if EVM_FLOAT_SUPPORT == 1
   "CNVFI",    "CNVFI 1", "CNVIF",  "CNVIF 1",
 #else
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
 #endif
-  "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
+  "!INVAL!", "!INVAL!",
   // unused
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
@@ -496,8 +521,14 @@ static const char *OP_STRINGS[] = {
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
+  // FAM_MEM
+#if EVM_MEMORY_SUPPORT == 1
+  "SEG",      "READ",     "WRITE8",   "WRITE16", "WRITE24", "WRITE32",  "LREAD",    "LWRITE8",
+  "LWRITE16", "LWRITE24", "LWRITE32", "SREAD",   "SWRITE8", "SWRITE16", "SWRITE24", "SWRITE32",
+#else
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
+#endif
   // FAM_CMP
   "CMP 0",   "CMP 1",   "CMP -1",  "CMP",
 #if EVM_FLOAT_SUPPORT == 1
@@ -583,6 +614,14 @@ static int evmdisStringifyInstructions(const evm_disassembler_t *evm) {
           case OP_INV:
           case OP_BOOL:
           case OP_NOT:
+#if EVM_MEMORY_SUPPORT == 1
+          case OP_SEG:
+          case OP_SREAD:
+          case OP_SWRITE8:
+          case OP_SWRITE16:
+          case OP_SWRITE24:
+          case OP_SWRITE32:
+#endif
           case OP_CMP_I0:
           case OP_CMP_I1:
           case OP_CMP_IN1:
@@ -677,6 +716,8 @@ static int evmdisStringifyInstructions(const evm_disassembler_t *evm) {
 
           // op + uint8
           case OP_BCALL:
+          case OP_TRUNC:
+          case OP_SIGNEXT:
           case OP_RET_I:
             len += snprintf(NULL, 0U, "    %s %u\n", OP_STRINGS[inst->opcode], inst->arg.i32 & 0xFF);
             inst->text = malloc(len + 1);
@@ -756,6 +797,32 @@ static int evmdisStringifyInstructions(const evm_disassembler_t *evm) {
               snprintf(inst->text, len + 1, "    %s %d\n", OP_STRINGS[inst->opcode], inst->arg.i16);
             }
           break;
+
+#if EVM_MEMORY_SUPPORT == 1
+          // op + uint16/uint24
+          case OP_READ:
+          case OP_WRITE8:
+          case OP_WRITE16:
+          case OP_WRITE24:
+          case OP_WRITE32:
+          case OP_LREAD:
+          case OP_LWRITE8:
+          case OP_LWRITE16:
+          case OP_LWRITE24:
+          case OP_LWRITE32:
+            len += snprintf(NULL, 0U, "    %s 0x%X\n", OP_STRINGS[inst->opcode], inst->arg.i32);
+            inst->text = malloc(len + 1);
+            inst->length = len;
+
+            if(inst->label) {
+              snprintf(inst->text, len + 1, "\nLAB_%06X:\n    %s 0x%X\n",
+                       inst->offset, OP_STRINGS[inst->opcode], inst->arg.i32);
+            }
+            else {
+              snprintf(inst->text, len + 1, "    %s 0x%X\n", OP_STRINGS[inst->opcode], inst->arg.i32);
+            }
+          break;
+#endif
 
           // op + int24/int32
           case OP_PUSH_24I:

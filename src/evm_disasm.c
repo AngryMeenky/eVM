@@ -339,7 +339,7 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         case OP_REM_R:
         case OP_TRUNC:
         case OP_SIGNEXT:
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
         case OP_SEG:
 #endif
         case OP_JMP:
@@ -362,7 +362,7 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         // opcode + 2
         case OP_CALL:
         case OP_PUSH_16I:
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
         case OP_READ:
         case OP_WRITE8:
         case OP_WRITE16:
@@ -388,7 +388,7 @@ uint32_t evmdisFromBuffer(evm_disassembler_t *evm, const uint8_t *buffer, uint32
         // opcode + 3
         case OP_LCALL:
         case OP_PUSH_24I:
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
         case OP_LREAD:
         case OP_LWRITE8:
         case OP_LWRITE16:
@@ -522,7 +522,7 @@ static const char *OP_STRINGS[] = {
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
   "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!", "!INVAL!",
   // FAM_MEM
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   "SEG",      "READ",     "WRITE8",   "WRITE16", "WRITE24", "WRITE32",  "LREAD",    "LWRITE8",
   "LWRITE16", "LWRITE24", "LWRITE32", "SREAD",   "SWRITE8", "SWRITE16", "SWRITE24", "SWRITE32",
 #else
@@ -614,7 +614,7 @@ static int evmdisStringifyInstructions(const evm_disassembler_t *evm) {
           case OP_INV:
           case OP_BOOL:
           case OP_NOT:
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
           case OP_SEG:
           case OP_SREAD:
           case OP_SWRITE8:
@@ -798,7 +798,7 @@ static int evmdisStringifyInstructions(const evm_disassembler_t *evm) {
             }
           break;
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
           // op + uint16/uint24
           case OP_READ:
           case OP_WRITE8:

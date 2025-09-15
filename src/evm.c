@@ -16,34 +16,56 @@
 
 evm_t *evmAllocate() {
   evm_t *retVal;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s()", __FUNCTION__);
   retVal = (evm_t *) EVM_CALLOC(1, sizeof(evm_t));
-  EVM_DEBUGF("eVM(%p)", retVal);
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_DEBUGF("new eVM(%p)", retVal);
+  EVM_TRACEF("Exit %s() -> %p", __FUNCTION__, retVal);
   return retVal;
 }
 
 
-#if EVM_STATIC_STACK == 1
-evm_t *evmInitialize(evm_t *vm, void *user, int32_t *stack, uint16_t stackSize);
-#else
-evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize) {
+EVM_API evm_t *evmInitialize(evm_t         *vm,          void *user,
+#if EVM_STATIC_PROGRAM == 1
+                             const uint8_t *program,     uint32_t  programSize,
 #endif
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+#if EVM_STATIC_STACK == 1
+                             int32_t       *stack,
+#endif
+                             uint16_t       stackSize) {
+
+#if EVM_STATIC_PROGRAM == 1
+#  if EVM_STATIC_STACK == 1
+  EVM_TRACEF("Enter %s(%p, %p, %p, %u, %p, %u)", __FUNCTION__, vm, user, program, programSize, stack, stackSize);
+#  else
+  EVM_TRACEF("Enter %s(%p, %p, %p, %u)", __FUNCTION__, vm, user, program, programSize);
+#  endif
+#else
+#  if EVM_STATIC_STACK == 1
+  EVM_TRACEF("Enter %s(%p, %p, %p, %u)", __FUNCTION__, vm, user, stack, stackSize);
+#  else
+  EVM_TRACEF("Enter %s(%p, %p, %u)", __FUNCTION__, vm, user, stackSize);
+#  endif
+#endif
   if(vm) {
     vm->ip = 0;
     vm->sp = 0;
-    vm->maxProgram = 0;
     vm->maxStack = stackSize;
 #if EVM_STATIC_STACK == 1
     vm->stack = stack;
 #else
     vm->stack = (int32_t *) EVM_CALLOC(stackSize, sizeof(int32_t));
 #endif
+#if EVM_STATIC_PROGRAM == 1
+    vm->program = program;
+    vm->maxProgram = programSize;
+#else
+    vm->maxProgram = 0;
     vm->program = NULL;
+#endif
     vm->env = user;
-#if EVM_MEMORY_SUPPORT == 1
-    vm->mem = (uint8_t *) EVM_CALLOC(0x01000000, sizeof(uint8_t));
+#if EVM_MEMORY_BANKS != 0
+    vm->segment = 0;
+    vm->mem = (uint8_t *) EVM_CALLOC(EVM_MEMORY_BANKS, 0x00010000 * sizeof(uint8_t));
     EVM_DEBUGF(
       "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
       vm, vm->stack, vm->env, vm->program, vm->mem
@@ -53,26 +75,35 @@ evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize) {
 #endif
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %p", __FUNCTION__, vm);
   return vm;
 }
 
 
 evm_t *evmFinalize(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
 
   if(vm) {
+#if EVM_MEMORY_BANKS != 0
+    EVM_DEBUGF(
+      "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
+      vm, vm->stack, vm->env, vm->program, vm->mem
+    );
+#else
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
-#if EVM_STATIC_STACK == 0
-    if(vm->stack  ) { EVM_FREE((void *) vm->stack);   }
 #endif
+#if EVM_STATIC_STACK == 0
+    if(vm->stack) { EVM_FREE((void *) vm->stack); }
+#endif
+#if EVM_STATIC_PROGRAM == 0
     if(vm->program) { EVM_FREE((void *) vm->program); }
-#if EVM_MEMORY_SUPPORT == 1
+#endif
+#if EVM_MEMORY_BANKS != 0
     if(vm->mem) { EVM_FREE((void *) vm->mem); }
 #endif
     memset(vm, 0, sizeof(evm_t));
     vm->flags |= EVM_HALTED;
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
     EVM_DEBUGF(
       "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
       vm, vm->stack, vm->env, vm->program, vm->mem
@@ -82,14 +113,14 @@ evm_t *evmFinalize(evm_t *vm) {
 #endif
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %p", __FUNCTION__, vm);
   return vm;
 }
 
 
 void evmFree(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
-#if EVM_MEMORY_SUPPORT == 1
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
+#if EVM_MEMORY_BANKS != 0
   EVM_DEBUGF(
     "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
     vm, vm->stack, vm->env, vm->program, vm->mem
@@ -98,14 +129,14 @@ void evmFree(evm_t *vm) {
   EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
 #endif
   EVM_FREE((void *) vm);
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s()", __FUNCTION__);
 }
 
 
 int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p, %p, %u)", __FUNCTION__, vm, prog, length);
   if(vm && prog && length < 0x01000000U) {
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
     EVM_DEBUGF(
       "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
       vm, vm->stack, vm->env, vm->program, vm->mem
@@ -124,7 +155,7 @@ int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
     vm->maxProgram = length;
     vm->flags &= ~(EVM_HALTED | EVM_YIELD); // clear the halt and yield flags on success
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
     EVM_DEBUGF(
       "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
       vm, vm->stack, vm->env, vm->program, vm->mem
@@ -132,40 +163,40 @@ int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
 #else
     EVM_DEBUGF("eVM(%p) { stack: %p user: %p prog: %p }", vm, vm->stack, vm->env, vm->program);
 #endif
-    EVM_TRACEF("Exit %s", __FUNCTION__);
+    EVM_TRACEF("Exit %s() -> 0", __FUNCTION__);
     return 0;
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> -1", __FUNCTION__);
   return -1; // failure
 }
 
 
 int32_t evmUnboundHandler(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) {
     EVM_WARNF("Called unbound builtin @ %08X", vm->ip - 2U);
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> 0", __FUNCTION__);
   return 0;
 }
 
 
 static int32_t evmIllegalState(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF(
       "Illegal state: sp(%04X/%04X) ip(%08X/%08X), flags(%08X)\n"
       "                      stack(%p), prog(%p), env(%p)"
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
       ", mem(%p), seg(%u)"
 #endif
     , vm->sp, vm->maxStack, vm->ip, vm->maxProgram, vm->flags,
       vm->stack, vm->program, vm->env
-#if EVM_MEMORY_SUPPORT == 1
-    , vm->mem, evmCurrentSegment(vm)
+#if EVM_MEMORY_BANKS != 0
+    , evmSystemRam(vm), evmCurrentSegment(vm)
 #endif
     );
   }
@@ -176,79 +207,99 @@ static int32_t evmIllegalState(evm_t *vm) {
 
 
 static int32_t evmStackOverflow(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF("Stack overflow: sp(%04X) ip(%08X)", vm->sp, vm->ip);
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> -1", __FUNCTION__);
   return -1;
 }
 
 
 static int32_t evmStackUnderflow(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF("Stack underflow: sp(%04X) ip(%08X)", vm->sp, vm->ip);
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> -1", __FUNCTION__);
   return -1;
 }
 
 
 static int32_t evmIllegalInstruction(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) {
     vm->flags |= EVM_HALTED;
     EVM_ERRORF("Illegal instruction: %02X @ %08X", vm->program[vm->ip], vm->ip);
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> -1", __FUNCTION__);
   return -1;
 }
 
 
 void evmHalt(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) { vm->flags |= EVM_HALTED; }
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s()", __FUNCTION__);
 }
 
 
 int evmHasHalted(const evm_t *vm) {
   int result;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   result = vm ? (vm->flags & EVM_HALTED) == (uint32_t) EVM_HALTED : -1;
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %d", __FUNCTION__, result);
   return result;
 }
 
 
 void evmYield(evm_t *vm) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) { vm->flags |= EVM_YIELD; }
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s()", __FUNCTION__);
 }
 
 
 int evmHasYielded(const evm_t *vm) {
   int result;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   result = vm ? (vm->flags & EVM_YIELD) == EVM_YIELD : -1;
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %d", __FUNCTION__, result);
   return result;
 }
 
 
-#if EVM_MEMORY_SUPPORT == 1
-uint32_t evmEffectiveAddress(const evm_t *vm, uint16_t addr) {
-  uint32_t ptr = addr;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
-  if(vm) { ptr += vm->segment; }
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+#if EVM_MEMORY_BANKS != 0
+void evmSetSegment(evm_t *vm, uint8_t bank) {
+  EVM_TRACEF("Enter %s(%p, %02X)", __FUNCTION__, vm, bank);
+  if(vm) {
+    if(EVM_MEMORY_BANKS <= (int) bank) {
+      vm->segment = ((uint32_t) (EVM_MEMORY_BANKS - 1)) << 16;
+    }
+    else {
+      vm->segment = ((uint32_t) bank) << 16;
+    }
+  }
+
+  EVM_TRACEF("Exit %s()", __FUNCTION__);
+}
+
+
+uint8_t *evmSafeRamAccess(const evm_t *vm, uint32_t addr) {
+  uint8_t *ptr = NULL;
+  EVM_TRACEF("Enter %s(%p, %08X)", __FUNCTION__, vm, addr);
+  if(vm) {
+    if(addr < (uint32_t) (EVM_MEMORY_BANKS << 16)) {
+      ptr = &evmSystemRam((evm_t *) vm)[addr];
+    }
+  }
+
+  EVM_TRACEF("Exit %s() -> %p", __FUNCTION__, ptr);
   return ptr;
 }
 #endif
@@ -256,7 +307,7 @@ uint32_t evmEffectiveAddress(const evm_t *vm, uint16_t addr) {
 
 int evmPush(evm_t *vm, int32_t val) {
   int result = 0;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p, %d)", __FUNCTION__, vm, val);
   if(vm) {
     if(vm->sp < vm->maxStack) {
       vm->stack[vm->sp++] = val;
@@ -266,7 +317,7 @@ int evmPush(evm_t *vm, int32_t val) {
     }
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %d", __FUNCTION__, result);
   return result;
 }
 
@@ -274,7 +325,7 @@ int evmPush(evm_t *vm, int32_t val) {
 #if EVM_FLOAT_SUPPORT == 1
 int evmPushf(evm_t *vm, float val) {
   int result = 0;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p, %f)", __FUNCTION__, vm, val);
   if(vm) {
     if(vm->sp < vm->maxStack) {
       vm->stack[vm->sp++] = *(int32_t *) &val;
@@ -284,7 +335,7 @@ int evmPushf(evm_t *vm, float val) {
     }
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %d", __FUNCTION__, result);
   return result;
 }
 #endif
@@ -292,7 +343,7 @@ int evmPushf(evm_t *vm, float val) {
 
 int evmPop(evm_t *vm) {
   int result = 0;
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p)", __FUNCTION__, vm);
   if(vm) {
     if(vm->sp > 0) {
       vm->sp--;
@@ -302,7 +353,7 @@ int evmPop(evm_t *vm) {
     }
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> %d", __FUNCTION__, result);
   return result;
 }
 
@@ -388,7 +439,7 @@ int evmPop(evm_t *vm) {
 #define EVM_TOP_F(VM) EVM_STACK_F(VM, 0U)
 
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
 static void evmSaveInt8(uint8_t *dst, int32_t val) {
    *(int8_t *) dst = (int8_t) val;
 }
@@ -405,7 +456,7 @@ static int32_t evmLoadInt8(const uint8_t *src) {
 }
 
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
 static void evmSaveInt16(uint8_t *dst, int32_t val) {
 #if EVM_UNALIGNED_READS == 1
   *(int16_t *) dst = (int16_t) val;
@@ -445,7 +496,7 @@ static int32_t evmLoadInt24(const uint8_t *src) {
 }
 
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
 static void evmSaveInt24(uint8_t *dst, int32_t val) {
   dst[0] =  val        & 0xFF;
   dst[1] = (val >>  8) & 0xFF;
@@ -486,7 +537,7 @@ static int32_t evmLoadInt32(const uint8_t *src) {
 
 
 int evmRun(evm_t *vm, uint32_t maxOps) {
-  EVM_TRACEF("Enter %s", __FUNCTION__);
+  EVM_TRACEF("Enter %s(%p, %u)", __FUNCTION__, vm, maxOps);
   if(vm && vm->program) {
     evm_t local = *vm; // copy the state back to a local eVM
     uint32_t ops = 0;
@@ -1024,7 +1075,7 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
         break;
 #endif
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
         case OP_SEG:
           EVM_TRACEF("%08X: SEG %d", local.ip, evmLoadUint8(&local.program[local.ip + 1U]));
           local.ip += 2; // move to the next instruction
@@ -1568,11 +1619,11 @@ int evmRun(evm_t *vm, uint32_t maxOps) {
     EVM_DEBUGF("Performed %u of %u VM operations", ops, maxOps);
 
     *vm = local; // copy the state back to the canonical eVM
-    EVM_TRACEF("Exit %s", __FUNCTION__);
+    EVM_TRACEF("Exit %s() -> %d", __FUNCTION__, !!(local.flags & EVM_HALTED));
     return !!(local.flags & EVM_HALTED);
   }
 
-  EVM_TRACEF("Exit %s", __FUNCTION__);
+  EVM_TRACEF("Exit %s() -> -1", __FUNCTION__);
   return -1;
 }
 

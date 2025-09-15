@@ -13,12 +13,12 @@ typedef enum evm_arg_e {
   ARG_I5,     // five bit integer literal
   ARG_I8,     // one byte integer literal
   ARG_I16,    // two byte integer literal
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   ARG_U8,     // one byte unsigned integer literal
   ARG_U16,    // two byte unsigned integer literal
 #endif
   ARG_I24,    // three byte integer literal
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   ARG_U24,    // three byte unsigned integer literal
 #endif
   ARG_I32,    // four byte integer literal
@@ -274,7 +274,7 @@ static const evm_mnemonic_t MNEMONICS[] = {
   { "NOT",      ARG_NONE,  OP_NOT,      &evmSimpleSerializer   },
   { "TRUNC",    ARG_I5,    OP_TRUNC,    &evmSimpleSerializer   },
   { "SIGNEXT",  ARG_I5,    OP_SIGNEXT,  &evmSimpleSerializer   },
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   { "SEG",      ARG_U8,    OP_SEG,      &evmSimpleSerializer   },
   { "READ",     ARG_U16,   OP_READ,     &evmSimpleSerializer   },
   { "WRITE8",   ARG_U16,   OP_WRITE8,   &evmSimpleSerializer   },
@@ -1681,7 +1681,7 @@ static int evmSimpleSerializer(const evm_mnemonic_t *m, evm_instruction_t *i) {
       EVM_ERRORF("Missing operand for %s", &m->tag[0]);
     }
   }
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   else if(m->arg == ARG_U16) {
     int32_t operand;
 

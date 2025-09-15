@@ -21,7 +21,7 @@ typedef struct evm_s {
   int32_t       *stack;
   const uint8_t *program;
   void          *env;
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   uint8_t       *mem;
   uint32_t       segment;
 #endif
@@ -48,11 +48,14 @@ EVM_API int32_t evmUnboundHandler(evm_t *vm);
 
 // eVM lifecycle functions
 EVM_API evm_t *evmAllocate();
+EVM_API evm_t *evmInitialize(evm_t         *vm,          void *user,
+#if EVM_STATIC_PROGRAM == 1
+                             const uint8_t *program,     uint32_t  programSize,
+#  endif
 #if EVM_STATIC_STACK == 1
-EVM_API evm_t *evmInitialize(evm_t *vm, void *user, int32_t *stack, uint16_t stackSize);
-#else
-EVM_API evm_t *evmInitialize(evm_t *vm, void *user, uint16_t stackSize);
+                             int32_t       *stack,
 #endif
+                             uint16_t       stackSize);
 EVM_API evm_t *evmFinalize(evm_t *vm);
 EVM_API void   evmFree(evm_t *vm);
 
@@ -75,16 +78,19 @@ EVM_API int  evmHasYielded(const evm_t *);
 #define evmStackDepth(EVM_PTR)      ((EVM_PTR)->sp)
 #define evmStackValue(EVM_PTR, IDX) ((EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
 #define evmStackTop(EVM_PTR)        evmStackValue(EVM_PTR, 0U)
+
 #if EVM_FLOAT_SUPPORT == 1
 #  define evmStackTopf(EVM_PTR)     evmStackValuef(EVM_PTR, 0U)
 #  define evmStackValuef(EVM_PTR, IDX) (*(float *) &(EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
 #endif
-#if EVM_MEMORY_SUPPORT == 1
+
+#if EVM_MEMORY_BANKS != 0
 #  define evmSystemRam(EVM_PTR) ((EVM_PTR)->mem)
 #  define evmCurrentSegment(EVM_PTR) (((EVM_PTR)->segment >> 16) & 0xFF)
-#  define evmSetSegment(EVM_PTR, val) ((EVM_PTR)->segment = ((val) & 0xFF) << 16)
+#  define evmEffectiveAddress(EVM_PTR, ADDR) ((EVM_PTR)->segment + ADDR)
 
-EVM_API uint32_t evmEffectiveAddress(const evm_t *, uint16_t);
+EVM_API void     evmSetSegment(evm_t *, uint8_t);
+EVM_API uint8_t *evmSafeRamAccess(const evm_t *, uint32_t addr);
 #endif
 
 #define evmProgramSize(EVM_PTR) ((EVM_PTR)->maxProgram)

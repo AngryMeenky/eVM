@@ -18,7 +18,7 @@ typedef enum opcode_family_e {
 
   // 0x60-0xB0 reserved for future expansion
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   FAM_MEM  = 0xC0,
 #endif
   FAM_CMP  = 0xD0,
@@ -121,7 +121,7 @@ typedef enum opcode_e {
   OP_CONV_IF_1 = FAM_BITS | 0x0D, // convert the second value from integer to float
 #endif
 
-#if EVM_MEMORY_SUPPORT == 1
+#if EVM_MEMORY_BANKS != 0
   OP_SEG      = FAM_MEM | 0x00, // set the active memory segment
   OP_READ     = FAM_MEM | 0x01, // read four bytes from a two byte address and push onto the stack
   OP_WRITE8   = FAM_MEM | 0x02, // write a byte to a two byte address

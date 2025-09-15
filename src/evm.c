@@ -170,12 +170,26 @@ static int32_t evmIllegalInstruction(evm_t *vm) {
 }
 
 
+void evmHalt(evm_t *vm) {
+  EVM_TRACEF("Enter %s", __FUNCTION__);
+  if(vm) { vm->flags |= EVM_HALTED; }
+  EVM_TRACEF("Exit %s", __FUNCTION__);
+}
+
+
 int evmHasHalted(const evm_t *vm) {
   int result;
   EVM_TRACEF("Enter %s", __FUNCTION__);
   result = vm ? (vm->flags & EVM_HALTED) == (uint32_t) EVM_HALTED : -1;
   EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
+}
+
+
+void evmYield(evm_t *vm) {
+  EVM_TRACEF("Enter %s", __FUNCTION__);
+  if(vm) { vm->flags |= EVM_YIELD; }
+  EVM_TRACEF("Exit %s", __FUNCTION__);
 }
 
 
@@ -186,7 +200,6 @@ int evmHasYielded(const evm_t *vm) {
   EVM_TRACEF("Exit %s", __FUNCTION__);
   return result;
 }
-
 
 int evmPush(evm_t *vm, int32_t val) {
   int result = 0;

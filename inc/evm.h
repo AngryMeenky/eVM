@@ -60,8 +60,11 @@ EVM_API int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length);
 EVM_API int evmRun(evm_t *vm, uint32_t maxOps);
 
 // status functions
-EVM_API int evmHasHalted(const evm_t *);
-EVM_API int evmHasYielded(const evm_t *);
+EVM_API void evmHalt(evm_t *);
+EVM_API int  evmHasHalted(const evm_t *);
+
+EVM_API void evmYield(evm_t *);
+EVM_API int  evmHasYielded(const evm_t *);
 
 // simple query "functions"
 #define evmMaximumStack(EVM_PTR)    ((EVM_PTR)->maxStack)

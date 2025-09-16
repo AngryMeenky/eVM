@@ -152,6 +152,7 @@ int evmSetProgram(evm_t *vm, const uint8_t *prog, uint32_t length) {
     memcpy((void *) vm->program, prog, length);
     ((uint8_t *) vm->program)[length] = OP_HALT; // halt terminate the program
 #endif
+    vm->ip = 0;
     vm->maxProgram = length;
     vm->flags &= ~(EVM_HALTED | EVM_YIELD); // clear the halt and yield flags on success
 

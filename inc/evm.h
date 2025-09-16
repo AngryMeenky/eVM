@@ -51,6 +51,9 @@ EVM_API int32_t evmUnboundHandler(evm_t *vm);
 // eVM lifecycle functions
 EVM_API evm_t *evmAllocate();
 EVM_API evm_t *evmInitialize(evm_t         *vm,          void *user,
+#if EVM_STATIC_MEMORY == 1
+                             uint8_t       *memory,
+#  endif
 #if EVM_STATIC_PROGRAM == 1
                              const uint8_t *program,     uint32_t  programSize,
 #  endif

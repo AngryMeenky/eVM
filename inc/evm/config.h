@@ -41,6 +41,12 @@
 #  define EVM_MEMORY_BANKS (1)
 #endif
 
+// Require statically allocated system ram?
+// valid values: [0,1]
+#ifndef EVM_STATIC_MEMORY
+#  define EVM_STATIC_MEMORY (0)
+#endif
+
 // Require statically allocated stack?
 // valid values: [0,1]
 #ifndef EVM_STATIC_STACK

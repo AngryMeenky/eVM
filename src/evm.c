@@ -25,6 +25,9 @@ evm_t *evmAllocate() {
 
 
 EVM_API evm_t *evmInitialize(evm_t         *vm,          void *user,
+#if EVM_STATIC_MEMORY == 1
+                             uint8_t       *memory,
+#endif
 #if EVM_STATIC_PROGRAM == 1
                              const uint8_t *program,     uint32_t  programSize,
 #endif
@@ -67,7 +70,11 @@ EVM_API evm_t *evmInitialize(evm_t         *vm,          void *user,
 #  if EVM_MEMORY_BANKS > 1
     vm->segment = 0;
 #  endif
+#  if EVM_STATIC_MEMORY == 1
+    vm->mem = memory;
+#  else
     vm->mem = (uint8_t *) EVM_CALLOC(EVM_MEMORY_BANKS, EVM_MEMORY_BANK_SIZE);
+#  endif
     EVM_DEBUGF(
       "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
       vm, vm->stack, vm->env, vm->program, vm->mem
@@ -100,7 +107,7 @@ evm_t *evmFinalize(evm_t *vm) {
 #if EVM_STATIC_PROGRAM == 0
     if(vm->program) { EVM_FREE((void *) vm->program); }
 #endif
-#if EVM_MEMORY_BANKS != 0
+#if EVM_MEMORY_BANKS != 0 && EVM_STATIC_MEMORY != 1
     if(vm->mem) { EVM_FREE((void *) vm->mem); }
 #endif
     memset(vm, 0, sizeof(evm_t));

@@ -18,12 +18,12 @@ int main(int argc, char **argv) {
   if(argc > 1) {
     evm_t vm;
 
-    if(evmInitialize(&vm, NULL, 1024U)) {
+    if(evmInitialize(&vm, NULL, NULL, 0U, 1024U)) {
       for(arg = 1; arg < argc; ++arg) {
         FILE *input = fopen(argv[arg], "rb");
 
         if(input) {
-          uint8_t  *prog;
+          uint8_t  *prog = NULL;
           uint32_t  length;
           if(!slurp(input, &prog, &length, *argv, argv[arg])) {
             if(!evmSetProgram(&vm, prog, length)) {
@@ -71,17 +71,17 @@ const EvmBuiltinFunction EVM_BUILTINS[EVM_MAX_BUILTINS] = {
   &stackDump,
   &programDump,
   &evmUnboundHandler,
-  &evmUnboundHandler,
-  &evmUnboundHandler,
-  &evmUnboundHandler,
-  &evmUnboundHandler,
 };
 
 
 static int slurp(FILE *fp, uint8_t **buffer, uint32_t *length, const char *exe, const char *name) {
   long size;
+
   *length = 0U;
-  *buffer = NULL;
+  if(*buffer) {
+    free(*buffer);
+    *buffer = NULL;
+  }
 
   if(!fseek(fp, 0L, SEEK_END) && (size = ftell(fp)) >= 0 && !fseek(fp, 0L, SEEK_SET)) {
     if((*buffer = malloc(size))) {
@@ -91,7 +91,7 @@ static int slurp(FILE *fp, uint8_t **buffer, uint32_t *length, const char *exe, 
       else {
         free(*buffer);
         *buffer = NULL;
-        fprintf(stderr, "%s: Failed to read  program from %s\n", exe, name);
+        fprintf(stderr, "%s: Failed to read program from %s\n", exe, name);
       }
     }
     else {

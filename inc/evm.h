@@ -80,8 +80,8 @@ EVM_API int  evmHasYielded(const evm_t *);
 #define evmStackTop(EVM_PTR)        evmStackValue(EVM_PTR, 0U)
 
 #if EVM_FLOAT_SUPPORT == 1
-#  define evmStackTopf(EVM_PTR)     evmStackValuef(EVM_PTR, 0U)
-#  define evmStackValuef(EVM_PTR, IDX) (*(float *) &(EVM_PTR)->stack[(EVM_PTR)->sp - ((IDX) - 1U)])
+#  define evmStackValuef(EVM_PTR, IDX) (*(float *) &evmStackTop(EVM_PTR))
+#  define evmStackTopf(EVM_PTR)        evmStackValuef(EVM_PTR, 0U)
 #endif
 
 #if EVM_MEMORY_BANKS != 0

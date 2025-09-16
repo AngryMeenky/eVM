@@ -13,7 +13,7 @@
 // The maximum number of different builtin functions that can be called by the byte code
 // valid values: [1,256]
 #ifndef EVM_MAX_BUILTINS
-#  define EVM_MAX_BUILTINS (8)
+#  define EVM_MAX_BUILTINS (4)
 #endif
 
 // Does the target platfrom allow unaligned reads?
@@ -43,7 +43,7 @@
 // Require statically allocated program?
 // valid values: [0,1]
 #ifndef EVM_STATIC_PROGRAM
-#  define EVM_STATIC_PROGRAM (0)
+#  define EVM_STATIC_PROGRAM (1)
 #endif
 
 // What level of logging to support?

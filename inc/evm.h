@@ -23,7 +23,9 @@ typedef struct evm_s {
   void          *env;
 #if EVM_MEMORY_BANKS != 0
   uint8_t       *mem;
+#  if EVM_MEMORY_BANKS > 1
   uint32_t       segment;
+#  endif
 #endif
 } evm_t;
 
@@ -86,10 +88,17 @@ EVM_API int  evmHasYielded(const evm_t *);
 
 #if EVM_MEMORY_BANKS != 0
 #  define evmSystemRam(EVM_PTR) ((EVM_PTR)->mem)
-#  define evmCurrentSegment(EVM_PTR) (((EVM_PTR)->segment >> 16) & 0xFF)
-#  define evmEffectiveAddress(EVM_PTR, ADDR) ((EVM_PTR)->segment + ADDR)
 
-EVM_API void     evmSetSegment(evm_t *, uint8_t);
+#  if EVM_MEMORY_BANKS == 1
+#    define evmCurrentSegment(EVM_PTR) (0)
+#    define evmEffectiveAddress(EVM_PTR, ADDR) (ADDR)
+#    define evmSetSegment(EVM_PTR, BANK) while(0)
+#  else
+#    define evmCurrentSegment(EVM_PTR) (((EVM_PTR)->segment >> EVM_MEMORY_BANK_POW) & 0xFF)
+#    define evmEffectiveAddress(EVM_PTR, ADDR) ((EVM_PTR)->segment + ADDR)
+EVM_API void evmSetSegment(evm_t *, uint8_t);
+#  endif
+
 EVM_API uint8_t *evmSafeRamAccess(const evm_t *, uint32_t addr);
 #endif
 

@@ -64,8 +64,10 @@ EVM_API evm_t *evmInitialize(evm_t         *vm,          void *user,
 #endif
     vm->env = user;
 #if EVM_MEMORY_BANKS != 0
+#  if EVM_MEMORY_BANKS > 1
     vm->segment = 0;
-    vm->mem = (uint8_t *) EVM_CALLOC(EVM_MEMORY_BANKS, 0x00010000 * sizeof(uint8_t));
+#  endif
+    vm->mem = (uint8_t *) EVM_CALLOC(EVM_MEMORY_BANKS, EVM_MEMORY_BANK_SIZE);
     EVM_DEBUGF(
       "eVM(%p) { stack: %p user: %p prog: %p mem: %p }",
       vm, vm->stack, vm->env, vm->program, vm->mem
@@ -275,27 +277,29 @@ int evmHasYielded(const evm_t *vm) {
 }
 
 
-#if EVM_MEMORY_BANKS != 0
+#if EVM_MEMORY_BANKS > 1
 void evmSetSegment(evm_t *vm, uint8_t bank) {
   EVM_TRACEF("Enter %s(%p, %02X)", __FUNCTION__, vm, bank);
   if(vm) {
     if(EVM_MEMORY_BANKS <= (int) bank) {
-      vm->segment = ((uint32_t) (EVM_MEMORY_BANKS - 1)) << 16;
+      vm->segment = ((uint32_t) (EVM_MEMORY_BANKS - 1)) << EVM_MEMORY_BANK_POW;
     }
     else {
-      vm->segment = ((uint32_t) bank) << 16;
+      vm->segment = ((uint32_t) bank) << EVM_MEMORY_BANK_POW;
     }
   }
 
   EVM_TRACEF("Exit %s()", __FUNCTION__);
 }
+#endif
 
 
+#if EVM_MEMORY_BANKS != 0
 uint8_t *evmSafeRamAccess(const evm_t *vm, uint32_t addr) {
   uint8_t *ptr = NULL;
   EVM_TRACEF("Enter %s(%p, %08X)", __FUNCTION__, vm, addr);
   if(vm) {
-    if(addr < (uint32_t) (EVM_MEMORY_BANKS << 16)) {
+    if(addr < (uint32_t) (EVM_MEMORY_BANKS << EVM_MEMORY_BANK_POW)) {
       ptr = &evmSystemRam((evm_t *) vm)[addr];
     }
   }
@@ -444,10 +448,11 @@ int evmPop(evm_t *vm) {
 static void evmSaveInt8(uint8_t *dst, int32_t val) {
    *(int8_t *) dst = (int8_t) val;
 }
+#endif
 
-
+#if EVM_MEMORY_BANKS > 1
 static int32_t evmLoadUint8(const uint8_t *src) {
-  return (int32_t) *src;
+  return ((int32_t) *src) & 0xFF;
 }
 #endif
 

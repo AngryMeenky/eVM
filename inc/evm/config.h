@@ -28,7 +28,14 @@
 #  define EVM_FLOAT_SUPPORT (1)
 #endif
 
-// Support up to 16MB of system ram in 64KB banks?
+// Set the power of 2 that determines the memory bank size. 1KB to 64KB
+// valid values: [10,16]
+#ifndef EVM_MEMORY_BANK_POW
+#  define EVM_MEMORY_BANK_POW (16)
+#endif
+#define EVM_MEMORY_BANK_SIZE (1 << EVM_MEMORY_BANK_POW)
+
+// Support up to 256 banks banks of RAM
 // valid values: [0,256]
 #ifndef EVM_MEMORY_BANKS
 #  define EVM_MEMORY_BANKS (1)
@@ -126,6 +133,12 @@
 #  error "EVM_FLOAT_SUPPORT is undefined"
 #elif EVM_FLOAT_SUPPORT < 0 || EVM_FLOAT_SUPPORT > 1
 #  error "EVM_FLOAT_SUPPORT is out of range"
+#endif
+
+#if !defined(EVM_MEMORY_BANK_POW)
+#  error "EVM_MEMORY_BANK_POW is undefined"
+#elif EVM_MEMORY_BANK_POW < 10 || EVM_MEMORY_BANK_POW > 16
+#  error "EVM_MEMORY_BANK_POW is out of range"
 #endif
 
 #if !defined(EVM_MEMORY_BANKS)
